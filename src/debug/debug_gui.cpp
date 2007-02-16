@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <curses.h>
+//#include <curses.h>
 #include <string.h>
 
 #include "support.h"
@@ -60,6 +60,10 @@ void DEBUG_ShowMsg(char const* format,...) {
 	vsprintf(buf,format,msg);
 	va_end(msg);
 
+//ERIC
+printf("%s",buf);
+return;
+
 	/* Add newline if not present */
 	Bitu len=strlen(buf);
 	if(buf[len-1]!='\n') strcat(buf,"\n");
@@ -81,6 +85,7 @@ void DEBUG_ShowMsg(char const* format,...) {
 }
 
 void DEBUG_RefreshPage(char scroll) {
+/*
 	if (scroll==-1 && logBuffPos!=logBuff.begin()) logBuffPos--;
 	else if (scroll==1 && logBuffPos!=logBuff.end()) logBuffPos++;
 
@@ -91,10 +96,11 @@ void DEBUG_RefreshPage(char scroll) {
 
 	while (rem_lines > 0 && i!=logBuff.begin()) {
 		rem_lines -= (int) ((*--i).size() / dbg.win_out->_maxx) + 1;
-		/* Const cast is needed for pdcurses which has no const char in mvwprintw (bug maybe) */
+		// Const cast is needed for pdcurses which has no const char in mvwprintw (bug maybe)
 		mvwprintw(dbg.win_out,rem_lines-1, 0, const_cast<char*>((*i).c_str()));
 	}
 	wrefresh(dbg.win_out);
+*/
 }
 
 void LOG::operator() (char const* format, ...){
@@ -157,28 +163,30 @@ static void DrawBars(void) {
 
 
 static void MakeSubWindows(void) {
-	/* The Std output win should go in bottem */
-	/* Make all the subwindows */
+/*ERIC
+	/ * The Std output win should go in bottem * /
+	/ * Make all the subwindows  * /
 	int outy=1;
-	/* The Register window  */
+	/ * The Register window  * /
 	dbg.win_reg=subwin(dbg.win_main,4,dbg.win_main->_maxx,outy,0);
 	outy+=5;
-	/* The Data Window */
+	/ * The Data Window * /
 	dbg.win_data=subwin(dbg.win_main,10,dbg.win_main->_maxx,outy,0);
 	outy+=11;
-	/* The Code Window */
+	/ * The Code Window * /
 	dbg.win_code=subwin(dbg.win_main,11,dbg.win_main->_maxx,outy,0);
 	outy+=12;
-	/* The Variable Window */
+	/ * The Variable Window * /
 	dbg.win_var=subwin(dbg.win_main,4,dbg.win_main->_maxx,outy,0);
 	outy+=5;
-	/* The Output Window */	
+	/ * The Output Window * /	
 	dbg.win_out=subwin(dbg.win_main,dbg.win_main->_maxy-outy-1,dbg.win_main->_maxx,outy,0);
 	dbg.input_y=dbg.win_main->_maxy-1;
 	scrollok(dbg.win_out,TRUE);
 	DrawBars();
 	Draw_RegisterLayout();
 	refresh();
+*/
 }
 
 static void MakePairs(void) {
@@ -257,20 +265,21 @@ void LOG_StartUp(void) {
 
 void DBGUI_StartUp(void) {
 	/* Start the main window */
-	dbg.win_main=initscr();
-	cbreak();       /* take input chars one at a time, no wait for \n */
-	noecho();       /* don't echo input */
-	nodelay(dbg.win_main,true);
-	keypad(dbg.win_main,true);
+//	dbg.win_main=initscr();
+//ERIC
+//	cbreak();       /* take input chars one at a time, no wait for \n */
+//	noecho();       /* don't echo input */
+//	nodelay(dbg.win_main,true);
+//	keypad(dbg.win_main,true);
 	#ifndef WIN32
-	resizeterm(50,81);
-	touchwin(dbg.win_main);
-	old_cursor_state = curs_set(0);
+//	resizeterm(50,81);
+//	touchwin(dbg.win_main);
+//	old_cursor_state = curs_set(0);
 	#endif
-	start_color();
+//	start_color();
 	cycle_count=0;
-	MakePairs();
-	MakeSubWindows();
+//	MakePairs();
+//	MakeSubWindows();
 
 }
 

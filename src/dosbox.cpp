@@ -121,6 +121,11 @@ static Bit32s ticksDone;
 static Bit32u ticksScheduled;
 bool ticksLocked;
 
+#ifdef C_DEBUG
+bool DEBUG_RemoteDataReady(void);
+Bitu DEBUG_EnableDebugger(void);
+#endif
+
 static Bitu Normal_Loop(void) {
 	Bits ret;
 	while (1) {
@@ -136,6 +141,7 @@ static Bitu Normal_Loop(void) {
 #endif
 		} else {
 			GFX_Events();
+
 			if (ticksRemain>0) {
 				TIMER_AddTick();
 				ticksRemain--;
@@ -202,6 +208,13 @@ increaseticks:
 				ticksDone = 0;
 		}
 	}
+#ifdef C_DEBUG
+  if(DEBUG_RemoteDataReady())
+  {
+    //DEBUG printf("Remote sent data.\n\n");
+    DEBUG_EnableDebugger();
+  }
+#endif
 	return 0;
 }
 

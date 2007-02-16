@@ -70,6 +70,12 @@ static void LogPages(char* selname);
 static void LogCPUInfo(void);
 static void OutputVecTable(char* filename);
 static void DrawVariables(void);
+Bits DEBUG_RemoteStep(void);
+bool DEBUG_AddBreakPoint(Bit32u address, bool once);
+bool DEBUG_AddMemBreakPoint(Bit32u address);
+bool DEBUG_DelBreakPoint(PhysPt address);
+int DEBUG_Continue(void);
+int DEBUG_ContinueWithoutDebug();
 
 char* AnalyzeInstruction(char* inst, bool saveSelector);
 Bit32u GetHexValue(char* str, char*& hex);
@@ -127,11 +133,13 @@ static bool debugging;
 
 
 static void SetColor(Bitu test) {
+#if 0
 	if (test) {
 		if (has_colors()) { wattrset(dbg.win_reg,COLOR_PAIR(PAIR_BYELLOW_BLACK));}
 	} else {
 		if (has_colors()) { wattrset(dbg.win_reg,0);}
 	}
+#endif
 }
 
 struct SCodeViewData {	
@@ -150,6 +158,10 @@ struct SCodeViewData {
 static Bit16u	dataSeg;
 static Bit32u	dataOfs;
 static bool		showExtend = true;
+
+Bit32u GetAddress(Bit16u seg, Bit32u offset);
+
+#include "debug_remote_inc.h"
 
 /***********/
 /* Helpers */
@@ -413,7 +425,7 @@ bool CBreakpoint::CheckBreakpoint(Bitu seg, Bitu off)
 	CBreakpoint* bp;
 	for(i=BPoints.begin(); i != BPoints.end(); i++) {
 		bp = (*i);
-		if ((bp->GetType()==BKPNT_PHYSICAL) && bp->IsActive() && (bp->GetSegment()==seg) && (bp->GetOffset()==off)) {
+		if ((bp->GetType()==BKPNT_PHYSICAL) && bp->IsActive() && bp->GetLocation() == GetAddress(seg,off)) {
 			// Ignore Once ?
 			if (ignoreOnce==bp) {
 				ignoreOnce=0;
@@ -624,6 +636,10 @@ bool DEBUG_IntBreakpoint(Bit8u intNum)
 	if (!CBreakpoint::CheckIntBreakpoint(where,intNum,reg_ah)) return false;
 	// Found. Breakpoint is valid
 	CBreakpoint::ActivateBreakpoints(where,false);	// Deactivate all breakpoints
+    
+        //ERIC
+    DEBUG_RemoteBreakpoint(where);
+    
 	return true;
 };
 
@@ -648,7 +664,9 @@ static bool StepOver()
 bool DEBUG_ExitLoop(void)
 {
 #if C_HEAVY_DEBUG
+#if 0
 	DrawVariables();
+#endif
 #endif
 
 	if (exitLoop) {
@@ -687,6 +705,7 @@ static void DrawData(void) {
 };
 
 static void DrawRegisters(void) {
+#if 0
 	/* Main Registers */
 	SetColor(reg_eax!=oldregs.eax);oldregs.eax=reg_eax;mvwprintw (dbg.win_reg,0,4,"%08X",reg_eax);
 	SetColor(reg_ebx!=oldregs.ebx);oldregs.ebx=reg_ebx;mvwprintw (dbg.win_reg,1,4,"%08X",reg_ebx);
@@ -757,10 +776,12 @@ static void DrawRegisters(void) {
 	wattrset(dbg.win_reg,0);
 	mvwprintw(dbg.win_reg,3,60,"%d       ",cycle_count);
 	wrefresh(dbg.win_reg);
+#endif
 };
 
 static void DrawCode(void) 
 {
+#if 0
 	bool saveSel; 
 	Bit32u disEIP = codeViewData.useEIP;
 	PhysPt start  = GetAddress(codeViewData.useCS,codeViewData.useEIP);
@@ -840,6 +861,7 @@ static void DrawCode(void)
 	}
 
 	wrefresh(dbg.win_code);
+#endif
 }
 
 static void SetCodeWinStart()
@@ -1474,6 +1496,7 @@ char* AnalyzeInstruction(char* inst, bool saveSelector)
 
 
 Bit32u DEBUG_CheckKeys(void) {
+#if 0
 	Bits ret=0;
 	int key=getch();
 	if (key>0) {
@@ -1607,7 +1630,11 @@ Bit32u DEBUG_CheckKeys(void) {
 		ret=0;
 		DEBUG_DrawScreen();
 	}
+
 	return ret;
+#else
+	return 0;
+#endif
 };
 
 Bitu DEBUG_Loop(void) {
@@ -1625,7 +1652,22 @@ Bitu DEBUG_Loop(void) {
 		DOSBOX_SetNormalLoop();
 		return 0;
 	}
-	return DEBUG_CheckKeys();
+
+  Bits ret;
+
+  ret = DEBUG_RemoteHandleCMD();
+
+  if (ret<0) return ret;
+		if (ret>0){
+			ret=(*CallBack_Handlers[ret])();
+			if (ret) {
+				exitLoop=true;
+				CPU_Cycles=CPU_CycleLeft=0;
+				return ret;
+			}
+      }
+
+	return 0; //ERIC DEBUG_CheckKeys();
 }
 
 void DEBUG_Enable(bool pressed) {
@@ -1636,18 +1678,22 @@ void DEBUG_Enable(bool pressed) {
 	SetCodeWinStart();
 	DEBUG_DrawScreen();
 	DOSBOX_SetLoop(&DEBUG_Loop);
+#if 0
 	if(!showhelp) { 
 		showhelp=true;
 		DEBUG_ShowMsg("***| TYPE HELP (+ENTER) TO GET AN OVERVIEW OF ALL COMMANDS |***\n");
 	}
+#endif
 	KEYBOARD_ClrBuffer();
 }
 
 void DEBUG_DrawScreen(void) {
+#if 0
 	DrawData();
 	DrawCode();
 	DrawRegisters();
 	DrawVariables();
+#endif
 }
 
 static void DEBUG_RaiseTimerIrq(void) {
@@ -1910,7 +1956,7 @@ void DEBUG_SetupConsole(void)
 	WIN32_Console();
 	#else
 	tcgetattr(0,&consolesettings);
-	printf("\e[8;50;80t"); //resize terminal
+	//ERIC printf("\e[8;50;80t"); //resize terminal
 	fflush(NULL);
 	#endif	
 	memset((void *)&dbg,0,sizeof(dbg));
@@ -1926,12 +1972,15 @@ static void DEBUG_ShutDown(Section * sec)
 	CBreakpoint::DeleteAll();
 	CDebugVar::DeleteAll();
 	#ifndef WIN32
-	curs_set(old_cursor_state);
+//ERIC	curs_set(old_cursor_state);
 	tcsetattr(0, TCSANOW,&consolesettings);
 //	printf("\e[0m\e[2J"); //Seems to destroy scrolling
-	printf("\ec");
+//ERIC	printf("\ec");
 	fflush(NULL);
 	#endif
+    
+    DEBUG_RemoteClose(); //ERIC
+    
 };
 
 Bitu debugCallback;
@@ -1951,6 +2000,11 @@ void DEBUG_Init(Section* sec) {
 	CALLBACK_Setup(debugCallback,DEBUG_EnableDebugger,CB_RETF,"debugger");
 	/* shutdown function */
 	sec->AddDestroyFunction(&DEBUG_ShutDown);
+    
+        
+    /*remote init ERIC*/
+    DEBUG_RemoteInit();
+
 }
 
 // DEBUGGING VAR STUFF
@@ -2268,12 +2322,71 @@ bool DEBUG_HeavyIsBreakpoint(void) {
 	}
 	PhysPt where = SegPhys(cs)+reg_eip;
 	if (CBreakpoint::CheckBreakpoint(SegValue(cs),reg_eip)) {
+
+    //ERIC
+    DEBUG_RemoteBreakpoint(where);
+
 		return true;	
 	}
 	return false;
 };
 #endif // HEAVY DEBUG
 
+bool DEBUG_AddBreakPoint(Bit32u address, bool once)
+{
+  CBreakpoint::AddBreakpoint((Bit16u)(address / 0x10), (Bit32u)address % 0x10, once);
+  
+  return true;
+}
+
+bool DEBUG_AddMemBreakPoint(Bit32u address)
+{
+  CBreakpoint::AddMemBreakpoint((Bit16u)(address / 0x10), (Bit32u)address % 0x10);
+  
+  return true;
+}
+
+bool DEBUG_DelBreakPoint(PhysPt address)
+{
+  CBreakpoint::DeleteBreakpoint(address);
+  
+  return true;
+}
+
+Bits DEBUG_RemoteStep(void)
+{
+  Bits ret;
+  
+	exitLoop = false;
+	skipFirstInstruction = true; // for heavy debugger
+  CPU_Cycles = 1;
+  ret = (*cpudecoder)();
+  //SetCodeWinStart();
+  CBreakpoint::ignoreOnce = 0;
+  
+  return ret;
+}
+
+int DEBUG_Continue(void)
+{
+    // Run Programm
+    debugging=false;
+    CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);						
+    ignoreAddressOnce = SegPhys(cs)+reg_eip;
+    DOSBOX_SetNormalLoop();
+    
+    return 1;
+}
+
+int DEBUG_ContinueWithoutDebug()
+{
+  CBreakpoint::DeleteAll();
+	CDebugVar::DeleteAll();
+  debugging = false;
+  DOSBOX_SetNormalLoop();
+  
+  return 1;
+}
 
 #endif // DEBUG
 
