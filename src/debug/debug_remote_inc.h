@@ -1480,14 +1480,22 @@ void remote_queue_event(debug_event_t ev)
 int remote_start_process(void)
 {
   debug_event_t ev;
+  string filename = "";
+  
+
+  filename = DEBUG_GetFileName();
   
   ev.eid = PROCESS_START;
   ev.ea = BADADDR; // r_debug.base; //GetAddress(0xf7,0); NOTE this gets overwritten at the moment.
 
-  strcpy(ev.modinfo.name,"BINEXE.EXE");
+  if(filename != "")
+    strcpy(ev.modinfo.name, filename.c_str());
+  else
+    strcpy(ev.modinfo.name,"BINEXE.EXE");
+
   ev.modinfo.base = BADADDR; //r_debug.base;//GetAddress(0xf7,0);
-  ev.modinfo.size = 432;//GetAddress(SegValue(ss),reg_esp) - r_debug.base; //0; //0xa000*0x10 - r_debug.base;
-  ev.modinfo.rebase_to = BADADDR;//r_debug.base;//r_debug.event.modinfo.base; //r_debug.event.ea;
+  ev.modinfo.size = 0;//GetAddress(SegValue(ss),reg_esp) - r_debug.base; //0; //0xa000*0x10 - r_debug.base;
+    ev.modinfo.rebase_to = BADADDR; //GetAddress(SegValue(cs),reg_eip); //r_debug.base;//r_debug.event.modinfo.base; //r_debug.event.ea;
   
   printf("remote name = %s, base = %08x, size = %08x, rebase_to = %08x BADADDR = %08x\n", ev.modinfo.name, ev.modinfo.base, ev.modinfo.size, ev.modinfo.rebase_to, BADADDR);
   remote_queue_event(ev);

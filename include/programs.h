@@ -29,6 +29,8 @@
 #include "setup.h"
 #endif
 
+using std::string;
+
 
 class Program {
 public:
@@ -46,7 +48,7 @@ public:
 	Bitu GetEnvCount(void);
 	bool SetEnv(const char * entry,const char * new_string);
 	void WriteOut(const char * format,...);				/* Write to standard output */
-
+  virtual string GetFileName() {string s = ""; if(cmd) {s = cmd->GetFileName();} return s; } 
 };
 
 typedef void (PROGRAMS_Main)(Program * * make);

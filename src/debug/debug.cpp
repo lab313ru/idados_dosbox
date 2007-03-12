@@ -76,6 +76,7 @@ bool DEBUG_AddMemBreakPoint(Bit32u address);
 bool DEBUG_DelBreakPoint(PhysPt address);
 int DEBUG_Continue(void);
 int DEBUG_ContinueWithoutDebug();
+string DEBUG_GetFileName();
 
 char* AnalyzeInstruction(char* inst, bool saveSelector);
 Bit32u GetHexValue(char* str, char*& hex);
@@ -1877,7 +1878,7 @@ static void LogInstruction(Bit16u segValue, Bit32u eipValue,  ofstream& out) {
 
 class DEBUG : public Program {
 public:
-	DEBUG()		{ pDebugcom	= this;	active = false; };
+	DEBUG()	{ pDebugcom	= this;	active = false; };
 	~DEBUG()	{ pDebugcom	= 0; };
 
 	bool IsActive() { return active; };
@@ -1890,13 +1891,12 @@ public:
 		safe_strncpy(filename,temp_line.c_str(),128);
 		// Read commandline
 		Bit16u i	=2;
-		bool ok		= false; 
 		args[0]		= 0;
-		do {
-			ok = cmd->FindCommand(i++,temp_line);
+
+    for(;cmd->FindCommand(i++,temp_line) == true;) {
 			strncat(args,temp_line.c_str(),256);
 			strncat(args," ",256);
-		} while (ok);
+		}
 		// Start new shell and execute prog		
 		active = true;
 		// Save cpu state....
@@ -1922,7 +1922,7 @@ public:
 		SegSet16(cs,oldcs);
 		reg_eip = oldeip;
 	};
-
+  
 private:
 	bool	active;
 };
@@ -1932,7 +1932,8 @@ void DEBUG_CheckExecuteBreakpoint(Bit16u seg, Bit32u off)
 	if (pDebugcom && pDebugcom->IsActive()) {
 		CBreakpoint::AddBreakpoint(seg,off,true);		
 		CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);	
-		pDebugcom = 0;
+
+		pDebugcom = 0; //ERIC FIXME can we safely comment out this line so we can use pDebugcom in debug_remote_inc.h
 	};
 };
 
@@ -2386,6 +2387,16 @@ int DEBUG_ContinueWithoutDebug()
   DOSBOX_SetNormalLoop();
   
   return 1;
+}
+
+string DEBUG_GetFileName()
+{
+  string filename = "";
+  
+  if(pDebugcom != 0)
+    filename = pDebugcom->GetFileName();
+  
+  return filename;
 }
 
 #endif // DEBUG
