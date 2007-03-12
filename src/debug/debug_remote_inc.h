@@ -1488,6 +1488,9 @@ int remote_start_process(void)
   ev.eid = PROCESS_START;
   ev.ea = BADADDR; // r_debug.base; //GetAddress(0xf7,0); NOTE this gets overwritten at the moment.
 
+  // TODO: use 'dos.psp()' to get the load address of the current app
+  // so that ida can use that to rebase its image
+
   if(filename != "")
     strcpy(ev.modinfo.name, filename.c_str());
   else
