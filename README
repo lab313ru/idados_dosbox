@@ -1,4 +1,4 @@
-DOSBox v0.66
+DOSBox v0.70
 
 
 =====
@@ -24,12 +24,13 @@ INDEX:
 6. Mapper
 7. Keyboard Layout
 8. Serial Multiplayer feature
-9. To run resource-demanding games
-10. The config file
-11. The language file
-12. Building your own version of DOSBox
-13. Special thanks
-14. Contact
+9. How to run resource-demanding games
+10. Troubleshooting
+11. The config file
+12. The language file
+13. Building your own version of DOSBox
+14. Special thanks
+15. Contact
 
 
 ==============
@@ -49,6 +50,7 @@ Q: I've got a Z instead of a C at the prompt.
 Q: How do I change to fullscreen ?
 Q: My CD-ROM doesn't work.
 Q: The mouse doesn't work.
+Q: There is no sound.
 Q: The sound stutters or sounds stretched/weird.
 Q: I can't type \ or : in DOSBox.
 Q: The game/application can't find its CD-ROM.
@@ -106,10 +108,26 @@ A: Usually, DOSBox detects when a game uses mouse control. When you click on
    you will have to lock the mouse manually by pressing CTRL-F10.
 
 
+Q: There is no sound.
+A: Be sure that the sound is correctly configured in the game. This might be
+   done during the installation or with a setup/setsound utility that 
+   accompanies the game. First see if an autodetection option is provided. If 
+   there is none try selecting soundblaster or soundblaster16 with the default
+   settings being "address=220 irq=7 dma=1". You might also want to select 
+   midi at address 330 as music device.
+   The parameters of the emulated soundcards can be changed in the DOSBox
+   configuration file.
+   If you still don't get any sound set the core to normal and use some lower
+   fixed cycles value (like cycles=2000). Also assure that your host operating
+   sound does provide sound.
+
+
 Q: The sound stutters or sounds stretched/weird.
 A: You're using too much cpu power to keep DOSBox running at the current speed.
    You can  lower the cycles, skip frames or get a faster machine.
    You can also increase the prebuffer in the configfile.
+   If you are using cycles=max or =auto, then make sure that there no
+   background processes interfering! (especially if they acces the harddisk)
 
 
 Q: I can't type \ or : in DOSBox.
@@ -124,6 +142,8 @@ A: This is a known problem. It only occurs if your keyboard layout isn't US.
      7. for \ try the keys around "enter". For ":" try shift and the keys 
         between "enter" and "l" (US keyboard layout).
      8. Try keyb.com from FreeDOS (http://projects.freedos.net/keyb/).
+        Look for keyb2.0 pre4 as older and newer versions are known to
+        have a bug in the loader routines.
 
 
 Q: The game/application can't find its CD-ROM.
@@ -137,7 +157,8 @@ A: Be sure to mount the CD-ROM with -t cdrom switch, this will enable the
 
 
 Q: The game/application runs much too slow!
-A: Look at the section "To run resource-demanding games" for more information.
+A: Look at the section "How to run resource-demanding games" for more 
+   information.
 
 
 Q: Can DOSBox harm my computer?
@@ -243,14 +264,14 @@ dosbox -version
   -conf configfile
         Start DOSBox with the options specified in "configfile".
         Multiple -conf options may be present.
-        See Chapter 9 for more details.
+        See Chapter 10 for more details.
 
   -lang languagefile
         Start DOSBox using the language specified in "languagefile".
 
   -noconsole (Windows Only)
         Start DOSBox without showing the console window. Output will
-	be redirected to stdout.txt and stderr.txt
+        be redirected to stdout.txt and stderr.txt
 	
   -machine machinetype
         Setup DOSBox to emulate a specific type of machine. Valid choices are:
@@ -269,7 +290,13 @@ dosbox -version
 
 Note: If a name/command/configfile/languagefile contains a space, put
       the whole name/command/configfile/languagefile between quotes
-      ("command or file name").
+      ("command or file name"). If you need to use quotes within quotes
+      (most likely with -c and mount).
+      Windows and OS/2 users can use single quotes inside the double quotes. 
+      Other people should be able to use escaped double quotes inside the 
+      double quotes.
+      win -c "mount c 'c:\program files\'" 
+      linux -c "mount c \"/tmp/name with space\""
 
 For example:
 
@@ -285,7 +312,9 @@ In Windows, you can also drag directories/files onto the DOSBox executable.
 4. Internal Programs:
 =====================
 
-DOSBox supports most of the DOS commands found in command.com. 
+DOSBox supports most of the DOS commands found in command.com.
+To get a list of the internal commands type "HELP" at the prompt.
+
 In addition, the following commands are available: 
 
 MOUNT "Emulated Drive letter" "Real Drive or Directory" 
@@ -390,7 +419,7 @@ CONFIG -get "section property"
   CONFIG can be used to change or query various settings of DOSBox 
   during runtime. It can save the current settings and language strings to
   disk. Information about all possible sections and properties can 
-  be found in section 10 (The Config File).
+  be found in section 11 (The Config File).
 
   -writeconf localfile
        Write the current configuration settings to file. "localfile" is 
@@ -398,7 +427,7 @@ CONFIG -get "section property"
        The configuration file controls various settings of DOSBox: 
        the amount of emulated memory, the emulated soundcards and many more 
        things. It allows access to AUTOEXEC.BAT as well.
-       See section 10 (The Config File) for more information.
+       See section 11 (The Config File) for more information.
 
   -writelang localfile
        Write the current language settings to file. "localfile" is 
@@ -719,9 +748,9 @@ This maximum will vary from computer to computer.
 
 
 
-=============
+==========
 6. Mapper:
-=============
+==========
 
 When you start the DOSBox mapper (either with CTRL-F1 or -startmapper as
 a command line argument to the DOSBox executable) you are presented with 
@@ -811,9 +840,9 @@ is present in the configfile.
 
 
 
-====================
+===================
 7. Keyboard Layout:
-====================
+===================
 
 To switch to a different keyboard layout, either the entry "keyboardlayout"
 in the [dos]-section in dosbox.conf can be used, or the internal DOSBox
@@ -911,9 +940,9 @@ Example: Be a server listening on TCP port 5000.
 
 
 
-===================================
-9. To run resource-demanding games: 
-===================================
+=======================================
+9. How to run resource-demanding games: 
+=======================================
 
 DOSBox emulates the CPU, the sound and graphic cards, and other peripherals
 of a PC, all at the same time. The speed of an emulated DOS application
@@ -962,10 +991,56 @@ Also try to close every program but DOSBox to reserve as much resources
 as possible for DOSBox.
 
 
+Advanced cycles configuration:
+The cycles=auto and cycles=max settings can be parametrized to have
+different startup defaults. The syntax is
+  cycles=auto ["realmode default"] ["protected mode default"%] 
+              [limit "cycle limit"]
+  cycles=max ["protected mode default"%] [limit "cycle limit"]
+Example:
+  cycles=auto 1000 80% limit 20000
+  will use cycles=1000 for real mode games, 80% cpu throttling for 
+  protected mode games along with a hard cycle limit of 20000
+
 
 
 ====================
-10. The Config File:
+10. Troubleshooting:
+====================
+
+DOSBox crashes right after starting it:
+  - use different values for the output= entry in your DOSBox
+    configuration file
+  - try to update your graphics card driver and DirectX
+
+Running a certain game closes DOSBox, crashes with some message or hangs:
+  - see if it works with a default DOSBox installation
+    (unmodified configuration file)
+  - try it with sound disabled (use the sound configuration
+    program that comes with the game, additionally you can
+    use sbtype=none and gus=false)
+  - change some entries of the DOSBox configuration file, especially try:
+      core=normal
+      fixed cycles (for example cycles=10000)
+      ems=false
+      xms=false
+    or combinations of the above settings
+  - use loadfix before starting the game
+
+The game exits to the DOSBox prompt with some error message:
+  - read the error message closely and try to locate the error
+  - try the hints at the above sections
+  - mount differently as some games are picky about the locations,
+    for example if you used "mount d d:\oldgames\game" try
+    "mount c d:\oldgames\game" and "mount c d:\oldgames"
+  - if the game requires a cdrom be sure you used "-t cdrom" when
+    mounting and try different additional parameters
+  - check the file permissions of the game files (remove read-only
+    attributes, add write permissions etc.)
+  - try reinstalling the game within dosbox
+
+====================
+11. The Config File:
 ====================
 
 A config file can be generated by CONFIG.COM, which can be found on the 
@@ -988,7 +1063,7 @@ look in the current directory for dosbox.conf.
 
 
 ======================
-11. The Language File:
+12. The Language File:
 ======================
 
 A language file can be generated by CONFIG.COM. 
@@ -1000,7 +1075,7 @@ section. There's a language= entry that can be changed with the filename.
 
 
 ========================================
-12. Building your own version of DOSBox:
+13. Building your own version of DOSBox:
 ========================================
 
 Download the source.
@@ -1009,7 +1084,7 @@ Check the INSTALL in the source distribution.
 
 
 ===================
-13. Special Thanks:
+14. Special thanks:
 ===================
 
 Vlad R. of the VDMSound project for excellent SoundBlaster info.
@@ -1018,12 +1093,15 @@ The Bochs and DOSemu projects, which I used for information.
 Freedos for ideas in making my shell.
 Pierre-Yves Gérardy for hosting the old Beta Board.
 Colin Snover for hosting our forum.
+Jantien for the version management.
+Shawn and Johannes for creating the MAC OS X PPC version.
+Ido Beeri for the icon.
 The Beta Testers.
 
 
 
 ============
-14. Contact:
+15. Contact:
 ============
 
 See the site: 
