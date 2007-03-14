@@ -56,7 +56,12 @@
 #define RPC_MSG                       53
 #define RPC_WARNING                   54
 
-#define ulong unsigned long
+#if C_IDA_64BIT
+#define ulong Uint64
+#else
+#define ulong Uint32
+#endif
+
 #define uchar unsigned char
 #define ulonglong unsigned long long
 

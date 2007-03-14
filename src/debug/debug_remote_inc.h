@@ -1310,7 +1310,11 @@ printf("\n");
 
   append_long(open, 9); //IDD_INTERFACE_VERSION);
   append_long(open, 0); //DEBUGGER_ID); DEBUGGER_ID_X86_IA32_WIN32_USER
-  append_long(open, 4); //32bit //sizeof(ea_t));
+#if C_IDA_64BIT
+  append_long(open, 8); //sizeof(ea_t) == 8;
+#else
+  append_long(open, 4); //sizeof(ea_t) == 4;
+#endif
   rpc_packet_t *rp = process_request(open, true);
   const uchar *answer = (uchar *)(rp+1);
   const uchar *end = answer + rp->length;

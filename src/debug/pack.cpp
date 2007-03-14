@@ -191,3 +191,4 @@ char *unpack_ds(const uchar **pptr, const uchar *end, bool empty_null)
   *pptr += len;
   return buf;
 }
+
