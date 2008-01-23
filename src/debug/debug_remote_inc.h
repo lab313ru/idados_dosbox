@@ -916,7 +916,7 @@ static string perform_request(const rpc_packet_t *rp)
         verb(("thread_read_regs(tid=%08X) => %d\n", tid, result));
         append_long(cmd, result);
         append_regvals(cmd, values, nregs);
-        delete values;
+        delete[] values;
       }
       break;
 
@@ -987,7 +987,7 @@ static string perform_request(const rpc_packet_t *rp)
           verb(("\n"));
         append_long(cmd, (ulong)(result));
         append_memory(cmd, buf, size);
-        delete buf;
+        delete[] buf;
       }
       break;
 /*
