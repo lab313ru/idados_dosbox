@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dev_con.h,v 1.28 2007-01-11 18:08:54 c2woody Exp $ */
+/* $Id: dev_con.h,v 1.32 2007-06-30 19:33:45 c2woody Exp $ */
 
 #include "dos_inc.h"
 #include "../ints/int10.h"
@@ -49,6 +49,7 @@ private:
 		Bit16u ncols;
 		Bit8s savecol;
 		Bit8s saverow;
+		bool warned;
 	} ansi;
 };
 
@@ -265,12 +266,18 @@ bool device_CON::Write(Bit8u * data,Bit16u * size) {
 			break;
 		case 'f':
 		case 'H':/* Cursor Pos*/
-			if(ansi.data[0]==0) ansi.data[0]=1;
-			if(ansi.data[1]==0) ansi.data[1]=1;
+			if(!ansi.warned) { //Inform the debugger that ansi is used.
+				ansi.warned = true;
+				LOG(LOG_IOCTL,LOG_WARN)("ANSI SEQUENCES USED");
+			}
+			/* Turn them into positions that are on the screen */
+			if(ansi.data[0] == 0) ansi.data[0] = 1;
+			if(ansi.data[1] == 0) ansi.data[1] = 1;
+			if(ansi.data[0] > ansi.nrows) ansi.data[0] = (Bit8u)ansi.nrows;
+			if(ansi.data[1] > ansi.ncols) ansi.data[1] = (Bit8u)ansi.ncols;
 			INT10_SetCursorPos(--(ansi.data[0]),--(ansi.data[1]),page); /*ansi=1 based, int10 is 0 based */
 			ClearAnsi();
 			break;
-
 			/* cursor up down and forward and backward only change the row or the col not both */
 		case 'A': /* cursor up*/
 			col=CURSOR_POS_COL(page) ;
@@ -333,12 +340,18 @@ bool device_CON::Write(Bit8u * data,Bit16u * size) {
 			ansi.saverow=CURSOR_POS_ROW(page);
 			ClearAnsi();
 			break;
-		case 'K':/* erase till end of line (don't touch cursor) */
+		case 'K': /* erase till end of line (don't touch cursor) */
 			col = CURSOR_POS_COL(page);
 			row = CURSOR_POS_ROW(page);
 			INT10_WriteChar(' ',ansi.attr,page,ansi.ncols-col,true); //Use this one to prevent scrolling when end of screen is reached
 			//for(i = col;i<(Bitu) ansi.ncols; i++) INT10_TeletypeOutputAttr(' ',ansi.attr,true);
 			INT10_SetCursorPos(row,col,page);
+			ClearAnsi();
+			break;
+		case 'M': /* delete line (NANSI) */
+			col = CURSOR_POS_COL(page);
+			row = CURSOR_POS_ROW(page);
+			INT10_ScrollWindow(row,0,ansi.nrows-1,ansi.ncols-1,ansi.data[0]? -ansi.data[0] : -1,ansi.attr,0xFF);
 			ClearAnsi();
 			break;
 		case 'l':/* (if code =7) disable linewrap */
@@ -370,7 +383,7 @@ Bit16u device_CON::GetInformation(void) {
 	Bit16u tail=mem_readw(BIOS_KEYBOARD_BUFFER_TAIL);
 
 	if ((head==tail) && !readcache) return 0x80D3;	/* No Key Available */
-	if (real_readw(0x40,head)) return 0x8093;		/* Key Available */
+	if (readcache || real_readw(0x40,head)) return 0x8093;		/* Key Available */
 
 	/* remove the zero from keyboard buffer */
 	Bit16u start=mem_readw(BIOS_KEYBOARD_BUFFER_START);
@@ -391,6 +404,7 @@ device_CON::device_CON() {
 	ansi.nrows=real_readb(BIOSMEM_SEG,BIOSMEM_NB_ROWS) + 1;
 	ansi.saverow=0;
 	ansi.savecol=0;
+	ansi.warned=false;
 	ClearAnsi();
 }
 

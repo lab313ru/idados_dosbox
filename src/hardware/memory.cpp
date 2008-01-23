@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: memory.cpp,v 1.48 2007-01-14 18:44:01 c2woody Exp $ */
+/* $Id: memory.cpp,v 1.51 2007-07-19 18:58:39 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -63,11 +63,27 @@ public:
 		flags=PFLAG_INIT|PFLAG_NOCODE;
 	}
 	Bitu readb(PhysPt addr) {
+#if C_DEBUG
 		LOG_MSG("Illegal read from %x, CS:IP %8x:%8x",addr,SegValue(cs),reg_eip);
+#else
+		static Bits lcount=0;
+		if (lcount<1000) {
+			lcount++;
+			LOG_MSG("Illegal read from %x, CS:IP %8x:%8x",addr,SegValue(cs),reg_eip);
+		}
+#endif
 		return 0;
 	} 
 	void writeb(PhysPt addr,Bitu val) {
+#if C_DEBUG
 		LOG_MSG("Illegal write to %x, CS:IP %8x:%8x",addr,SegValue(cs),reg_eip);
+#else
+		static Bits lcount=0;
+		if (lcount<1000) {
+			lcount++;
+			LOG_MSG("Illegal write to %x, CS:IP %8x:%8x",addr,SegValue(cs),reg_eip);
+		}
+#endif
 	}
 };
 
@@ -143,12 +159,12 @@ Bitu mem_strlen(PhysPt pt) {
 		if (!mem_readb_inline(pt+x)) return x;
 		x++;
 	}
-	return 0;		//Hope this doesn't happend
+	return 0;		//Hope this doesn't happen
 }
 
 void mem_strcpy(PhysPt dest,PhysPt src) {
 	Bit8u r;
-	while (r=mem_readb(src++)) mem_writeb_inline(dest++,r);
+	while ( (r = mem_readb(src++)) ) mem_writeb_inline(dest++,r);
 	mem_writeb_inline(dest,0);
 }
 
@@ -157,14 +173,14 @@ void mem_memcpy(PhysPt dest,PhysPt src,Bitu size) {
 }
 
 void MEM_BlockRead(PhysPt pt,void * data,Bitu size) {
-	Bit8u * write=(Bit8u *) data;
+	Bit8u * write=reinterpret_cast<Bit8u *>(data);
 	while (size--) {
 		*write++=mem_readb_inline(pt++);
 	}
 }
 
-void MEM_BlockWrite(PhysPt pt,void * data,Bitu size) {
-	Bit8u * read=(Bit8u *) data;
+void MEM_BlockWrite(PhysPt pt,void const * const data,Bitu size) {
+	Bit8u const * read = reinterpret_cast<Bit8u const * const>(data);
 	while (size--) {
 		mem_writeb_inline(pt++,*read++);
 	}

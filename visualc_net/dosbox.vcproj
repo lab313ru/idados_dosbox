@@ -158,6 +158,9 @@
 			<File
 				RelativePath="..\src\dosbox.cpp">
 			</File>
+			<File
+				RelativePath="..\src\dosbox.rc">
+			</File>
 			<Filter
 				Name="cpu"
 				Filter="">
@@ -166,6 +169,9 @@
 				</File>
 				<File
 					RelativePath="..\src\cpu\core_dyn_x86.cpp">
+				</File>
+				<File
+					RelativePath="..\src\cpu\core_dynrec.cpp">
 				</File>
 				<File
 					RelativePath="..\src\cpu\core_full.cpp">
@@ -276,6 +282,34 @@
 					</File>
 					<File
 						RelativePath="..\src\cpu\core_dyn_x86\string.h">
+					</File>
+				</Filter>
+				<Filter
+					Name="core_dynrec"
+					Filter="">
+					<File
+						RelativePath="..\src\cpu\core_dynrec\cache.h">
+					</File>
+					<File
+						RelativePath="..\src\cpu\core_dynrec\decoder.h">
+					</File>
+					<File
+						RelativePath="..\src\cpu\core_dynrec\decoder_basic.h">
+					</File>
+					<File
+						RelativePath="..\src\cpu\core_dynrec\decoder_opcodes.h">
+					</File>
+					<File
+						RelativePath="..\src\cpu\core_dynrec\dyn_fpu.h">
+					</File>
+					<File
+						RelativePath="..\src\cpu\core_dynrec\operators.h">
+					</File>
+					<File
+						RelativePath="..\src\cpu\core_dynrec\risc_x86.h">
+					</File>
+					<File
+						RelativePath="..\src\cpu\core_dynrec\risc_x64.h">
 					</File>
 				</Filter>
 			</Filter>
@@ -816,6 +850,9 @@
 				RelativePath="..\include\video.h">
 			</File>
 		</Filter>
+		<File
+			RelativePath="..\src\dosbox.ico">
+		</File>
 	</Files>
 	<Globals>
 	</Globals>

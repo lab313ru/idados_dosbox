@@ -1,7 +1,79 @@
+0.72
+  - Fixed unitialized variable in joystick. (Fixes crashes on Vista and
+    Mac OS X)
+  - Some bugfixes and speedups to the 64 bit recompiling core.
+  - Fixed sign flag on soundblaster dma transfers (Space Quest 6 intro)
+  - Fixed a bug in keyboard layout processing code and fixed certain
+    layouts.
+  - Fixed Dreamweb.
+  - Improved speed unlocking when running cycles=max.
+  - Fixed a crash related to the tab completion in the shell.
+  - Improved aspect correction code. Should now be like how a real monitor
+    handles it.
+  - Fixed a bug in the xms status report code. (Blake Stone 1.0 shareware)
+  - Added a lot more keyboard layouts.
+  - Fix crash related to changing the scaler before a screen was created.
+  - Hopefully fixed compilation on *bsd.
+  - Enabled auto cpu core selection for recompiling core as well.
+  - Made the used joystick selectable when 4axis is specified.
+  - Added some hints for inexperienced DOS users to the shell.
+
+0.71
+  - Add a new recompiling cpu core, which should be easier to port.
+  - Add 64 bit version of the recompiling core.
+  - Add mipsel 32 bit version of the recompiling core.
+  - Fix a few small problems with FCBs. (fixes Jewels of darkness and
+    cyrus chess)
+  - Raise some more exceptions. (fixes vbdos)
+  - Fix a few problems with the dynamic core. (fixes Inner Words,
+    Archmimedean Dynasty and others)
+  - Improve/Fix fallback code for certain graphics cards.
+  - Fix a few cd audio related bugs.
+  - Add an undocumented MSCDEX feature. (Fixes Ultimate Domain)
+  - Fix some pcspeaker mode. (fixes Test Drive and similar games)
+  - Improve dos keyinput handling. (fixes Wing Commander 3 exit dialog)
+  - Remove Exit condition on fully nested mode. (fixes some demo)
+  - Add image file size detection.
+  - Add/Fix some ansi codes. (fixes PC Larn and certain versions of
+    infocom games)
+  - Several general DOS fixes. (fixes nba95, hexit and various other games)
+  - Add some valid input checks. (fixes 3d body adventure and similar
+    games)
+  - Fix digital joystick centering problem.
+  - Reenable textmode 54 and 55.
+  - Fix a pelmask problem with univbe 5.0 lite. (fixes Panzer General)
+  - Fix minor mixer underflow.
+  - Some general image and bios disk emulation fixes.
+  - Hopefully fix compilation on BSD and darwin.
+  - Try using ioctl cdrom access by default if possible.
+  - Fix some svga detection routine. (fixes Grandest Fleet 2 and Bobby Fischer
+    Teaches Chess)
+  - You can now close DOSBox using the status window in win32.
+  - Add support for NX enabled systems.
+  - Fix a casting error which only showed with certain compilers. (fixes
+    various games under mac os x and 64 bit linux)
+  - Improve timer and add gate 2 support. (fixes various games and
+    joystick problems)
+  - Improve mouse. Add undocumented backdoor. (fixes Last half of Darkness, 
+    PC-BLOX and others)
+  - Add/improve support for ~ and ~username in all commands.
+  - Fix a font problem with the pcjr/tandy. (fixes personal deskmate 2)
+  - Change dma routine a bit. (fixes ticks in sound in various games)
+  - Allow read-only diskimages to be booted. (fixes various booter
+    games)
+  - Add basic hidden file support on cdrom images. (fixes Player
+    Manager 2)
+  - Add some rarely used functionality to the int10 mode setup. (fixes
+    WW2 Battles of the South pacific)
+  - Add ability to force scaler usage.
+  - Speed up flag generation and make it more 386-like.
+  - Some colourful feedback in the mapper.
+  - General code cleanup.
+
 0.70
   - Improve register handling and support with XMS.
   - Fix some issues with deleting open files.(windows only issue)
-  - Add dummpy LPT1 class. (windows only issue)
+  - Add dummy LPT1 class. (windows only issue)
   - Improve some of the internal dos commands. (choice, copy and shift)
   - Improve ROM area. (for games that use it for random numbers or 
     overwrite it as some sort of detection thing)
@@ -13,7 +85,7 @@
   - Move some interrupt handlers to XT Bios locations.
   - Add a dynamic fpu on x86.
   - Improve fpu on non-x86.
-  - Trapflag gets strickt priority over hardware IRQs.
+  - Trapflag gets strict priority over hardware IRQs.
   - Trapflag support for the dynamic core.
   - Add dummy TRx handling.
   - Fix a few rarely used character functions.

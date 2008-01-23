@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_mscdex.cpp,v 1.45 2007-01-21 16:21:22 c2woody Exp $ */
+/* $Id: dos_mscdex.cpp,v 1.50 2007-07-20 18:22:28 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -64,7 +64,7 @@ public:
 	void	SetDriveLetter		(Bit8u letter)	{ sSave(sDeviceHeader,driveLetter,letter);		};
 	void	SetNumSubUnits		(Bit8u num)		{ sSave(sDeviceHeader,numSubUnits,num);			};
 	Bit8u	GetNumSubUnits		(void)			{ return sGet(sDeviceHeader,numSubUnits);		};
-	void	SetName				(char* _name)	{ MEM_BlockWrite(pt+offsetof(sDeviceHeader,name),_name,8); };
+	void	SetName				(char const* _name)	{ MEM_BlockWrite(pt+offsetof(sDeviceHeader,name),_name,8); };
 	void	SetInterrupt		(Bit16u ofs)	{ sSave(sDeviceHeader,interrupt,ofs);			};
 	void	SetStrategy			(Bit16u ofs)	{ sSave(sDeviceHeader,strategy,ofs);			};
 
@@ -81,7 +81,7 @@ public:
 		Bit16u  wReserved;
 		Bit8u	driveLetter;
 		Bit8u	numSubUnits;
-	} TDeviceHeader;
+	} GCC_ATTRIBUTE(packed) TDeviceHeader;
 	#ifdef _MSC_VER
 	#pragma pack()
 	#endif
@@ -190,12 +190,14 @@ void CMscdex::GetDrives(PhysPt data)
 
 bool CMscdex::IsValidDrive(Bit16u _drive)
 {
+	_drive &= 0xff; //Only lowerpart (Ultimate domain)
 	for (Bit16u i=0; i<GetNumDrives(); i++) if (dinfo[i].drive==_drive) return true;
 	return false;
 };
 
 Bit8u CMscdex::GetSubUnit(Bit16u _drive)
 {
+	_drive &= 0xff; //Only lowerpart (Ultimate domain)
 	for (Bit16u i=0; i<GetNumDrives(); i++) if (dinfo[i].drive==_drive) return (Bit8u)i;
 	return 0xff;
 };
@@ -321,11 +323,11 @@ int CMscdex::AddDrive(Bit16u _drive, char* physicalPath, Bit8u& subUnit)
 
 		//Link it in the device chain
 		Bit32u start = dos_infoblock.GetDeviceChain();
-		Bit16u segm  = start>>16;
-		Bit16u offm  = start&0xFFFF;
+		Bit16u segm  = (Bit16u)(start>>16);
+		Bit16u offm  = (Bit16u)(start&0xFFFF);
 		while(start != 0xFFFFFFFF) {
-			segm  = start>>16;
-			offm  = start&0xFFFF;
+			segm  = (Bit16u)(start>>16);
+			offm  = (Bit16u)(start&0xFFFF);
 			start = real_readd(segm,offm);
 		}
 		real_writed(segm,offm,seg<<16);
@@ -876,14 +878,17 @@ static Bit16u MSCDEX_IOCTL_Input(PhysPt buffer,Bit8u drive_unit) {
 					mscdex->GetCurrentPos(drive_unit,pos);
 					Bit8u addr_mode = mem_readb(buffer+1);
 					if (addr_mode==0) {			// HSG
-						mem_writed(buffer+2,MSF_TO_FRAMES (pos.min, pos.sec, pos.fr));
+						Bit32u frames=MSF_TO_FRAMES(pos.min, pos.sec, pos.fr);
+						if (frames<150) MSCDEX_LOG("MSCDEX: Get position: invalid position %d:%d:%d", pos.min, pos.sec, pos.fr);
+						else frames-=150;
+						mem_writed(buffer+2,frames);
 					} else if (addr_mode==1) {	// Red book
 						mem_writeb(buffer+2,pos.fr);
 						mem_writeb(buffer+3,pos.sec);
 						mem_writeb(buffer+4,pos.min);
 						mem_writeb(buffer+5,0x00);
 					} else {
-						LOG_MSG("MSCDEX: Get position: invalid address mode %x",addr_mode);
+						MSCDEX_LOG("MSCDEX: Get position: invalid address mode %x",addr_mode);
 						return 0x03;		// invalid function
 					}
 				   }break;

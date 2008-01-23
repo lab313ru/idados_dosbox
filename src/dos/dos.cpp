@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos.cpp,v 1.99 2007-01-13 08:35:49 qbix79 Exp $ */
+/* $Id: dos.cpp,v 1.104 2007-07-27 19:17:23 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -45,11 +45,11 @@ void DOS_SetError(Bit16u code) {
 #define DATA_TRANSFERS_TAKE_CYCLES 1
 #ifdef DATA_TRANSFERS_TAKE_CYCLES
 #include "cpu.h"
-static inline void modify_cycles(Bitu value) {
+static inline void modify_cycles(Bits value) {
 	if((4*value+5) < CPU_Cycles) CPU_Cycles -= 4*value; else CPU_Cycles = 5;
 }
 #else
-static inline void modify_cycles(Bitu /* value */) {
+static inline void modify_cycles(Bits /* value */) {
 	return;
 }
 #endif
@@ -191,14 +191,12 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x0c:		/* Flush Buffer and read STDIN call */
 		{
+			/* flush STDIN-buffer */
+			Bit8u c;Bit16u n;
+			while (DOS_GetSTDINStatus()) {
+				n=1;	DOS_ReadFile(STDIN,&c,&n);
+			}
 			switch (reg_al) {
-			case 0x0:
-				/* flush STDIN-buffer */
-				Bit8u c;Bit16u n;
-				while (DOS_GetSTDINStatus()) {
-					n=1;	DOS_ReadFile(STDIN,&c,&n);
-				}
-				break;
 			case 0x1:
 			case 0x6:
 			case 0x7:
@@ -213,6 +211,7 @@ static Bitu DOS_21Handler(void) {
 				break;
 			default:
 //				LOG_ERROR("DOS:0C:Illegal Flush STDIN Buffer call %d",reg_al);
+				reg_al=0;
 				break;
 			}
 		}
@@ -289,7 +288,7 @@ static Bitu DOS_21Handler(void) {
 		LOG(LOG_FCB,LOG_NORMAL)("DOS:0x22 FCB-Random write used, result:al=%d",reg_al);
 		break;
 	case 0x23:		/* Get file size for FCB */
-		if (DOS_FCBGetFileSize(SegValue(ds),reg_dx,reg_cx)) reg_al = 0x00;
+		if (DOS_FCBGetFileSize(SegValue(ds),reg_dx)) reg_al = 0x00;
 		else reg_al = 0xFF;
 		break;
 	case 0x24:		/* Set Random Record number for FCB */
@@ -360,7 +359,10 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x2d:		/* Set System Time */
 		LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Set System Time not supported");
-		reg_al=0;	/* Noone is changing system time */
+		//Check input parameters nonetheless
+		if( reg_ch > 23 || reg_cl > 59 || reg_dh > 59 || reg_dl > 99 )
+			reg_al = 0xff; 
+		else reg_al = 0;
 		break;
 	case 0x2e:		/* Set Verify flag */
 		dos.verify=(reg_al==1);
@@ -386,12 +388,15 @@ static Bitu DOS_21Handler(void) {
 		dos.return_code=reg_al; //Officially a field in the SDA
 		dos.return_mode=RETURN_TSR;
 		break;
-        case 0x32: /* Get drive parameter block for specific drive */
+	case 0x1f: /* Get drive parameter block for default drive */
+	case 0x32: /* Get drive parameter block for specific drive */
 		{	/* Officially a dpb should be returned as well. The disk detection part is implemented */
-			Bitu drive=reg_dl;if(!drive) drive=dos.current_drive;else drive--;
+			Bitu drive=reg_dl;if(!drive || reg_ah==0x1f) drive=dos.current_drive;else drive--;
 			if(Drives[drive]) {
-				reg_al=0x00;
-				LOG(LOG_DOSMISC,LOG_ERROR)("Get drive parameter block.");   
+				reg_al = 0x00;
+				SegSet16(ds,dos.tables.dpb);
+				reg_bx = drive;//Faking only the first entry (that is the driveletter)
+				LOG(LOG_DOSMISC,LOG_ERROR)("Get drive parameter block.");
 			} else {
 				reg_al=0xff;
 			}
@@ -988,23 +993,21 @@ static Bitu DOS_21Handler(void) {
 		LOG(LOG_DOSMISC,LOG_NORMAL)("DOS:Windows long file name support call %2X",reg_al);
 		break;
 
-    case 0x68:                  /* FFLUSH Commit file */
-        CALLBACK_SCF(false);    //mirek
-    case 0xE0:
-    case 0x18:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
-    case 0x1d:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
-    case 0x1e:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
-    case 0x20:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
-    case 0x6b:		            /* NULL Function */
-    case 0x61:		            /* UNUSED */
-    case 0xEF:                  /* Used in Ancient Art Of War CGA */
-	case 0x1f:					/* Get drive parameter block for default drive */
-
+	case 0x68:                  /* FFLUSH Commit file */
+		CALLBACK_SCF(false);    //mirek
+	case 0xE0:
+	case 0x18:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
+	case 0x1d:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
+	case 0x1e:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
+	case 0x20:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
+	case 0x6b:		            /* NULL Function */
+	case 0x61:		            /* UNUSED */
+	case 0xEF:                  /* Used in Ancient Art Of War CGA */
 	case 0x5c:					/* FLOCK File region locking */
 	case 0x5e:					/* More Network Functions */
-    default:
-        LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Unhandled call %02X al=%02X. Set al to default of 0",reg_ah,reg_al);
-        reg_al=0x00; /* default value */
+	default:
+		LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Unhandled call %02X al=%02X. Set al to default of 0",reg_ah,reg_al);
+		reg_al=0x00; /* default value */
 		break;
 	};
 	return CBRET_NONE;

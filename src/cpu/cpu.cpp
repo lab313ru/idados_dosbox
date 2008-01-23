@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cpu.cpp,v 1.98 2007-02-22 08:35:34 qbix79 Exp $ */
+/* $Id: cpu.cpp,v 1.103 2007-08-09 19:52:32 c2woody Exp $ */
 
 #include <assert.h>
 #include <sstream>
@@ -27,6 +27,7 @@
 #include "mapper.h"
 #include "setup.h"
 #include "paging.h"
+#include "lazyflags.h"
 #include "support.h"
 
 Bitu DEBUG_EnableDebugger(void);
@@ -62,10 +63,16 @@ Bitu CPU_AutoDetermineMode;
 void CPU_Core_Full_Init(void);
 void CPU_Core_Normal_Init(void);
 void CPU_Core_Simple_Init(void);
+#if (C_DYNAMIC_X86)
 void CPU_Core_Dyn_X86_Init(void);
 void CPU_Core_Dyn_X86_Cache_Init(bool enable_cache);
 void CPU_Core_Dyn_X86_Cache_Close(void);
 void CPU_Core_Dyn_X86_SetFPUMode(bool dh_fpu);
+#elif (C_DYNREC)
+void CPU_Core_Dynrec_Init(void);
+void CPU_Core_Dynrec_Cache_Init(bool enable_cache);
+void CPU_Core_Dynrec_Cache_Close(void);
+#endif
 
 /* In debug mode exceptions are tested and dosbox exits when 
  * a unhandled exception state is detected. 
@@ -87,7 +94,7 @@ void CPU_Core_Dyn_X86_SetFPUMode(bool dh_fpu);
 
 #if defined(CPU_CHECK_IGNORE)
 #define CPU_CHECK_COND(cond,msg,exc,sel) {	\
-	cond;					\
+	if (cond) do {} while (0);				\
 }
 #elif defined(CPU_CHECK_EXCEPT)
 #define CPU_CHECK_COND(cond,msg,exc,sel) {	\
@@ -178,6 +185,7 @@ bool CPU_POPF(Bitu use32) {
 	if (use32)
 		CPU_SetFlags(CPU_Pop32(),mask);
 	else CPU_SetFlags(CPU_Pop16(),mask & 0xffff);
+	DestroyConditionFlags();
 	return false;
 }
 
@@ -186,6 +194,7 @@ bool CPU_PUSHF(Bitu use32) {
 		/* Not enough privileges to execute PUSHF */
 		return CPU_PrepareException(EXCEPTION_GP,0);
 	}
+	FillFlags();
 	if (use32) 
 		CPU_Push32(reg_flags & 0xfcffff);
 	else CPU_Push16(reg_flags);
@@ -258,6 +267,7 @@ enum TSwitchType {
 };
 
 bool CPU_SwitchTask(Bitu new_tss_selector,TSwitchType tstype,Bitu old_eip) {
+	FillFlags();
 	TaskStateSegment new_tss;
 	if (!new_tss.SetSelector(new_tss_selector)) 
 		E_Exit("Illegal TSS for switch, selector=%x, switchtype=%x",new_tss_selector,tstype);
@@ -447,6 +457,7 @@ void CPU_Exception(Bitu which,Bitu error ) {
 Bit8u lastint;
 void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip) {
 	lastint=num;
+	FillFlags();
 #if C_DEBUG
 	switch (num) {
 	case 0xcd:
@@ -666,6 +677,7 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			CPU_SetFlags(CPU_Pop16(),FMASK_ALL & 0xffff);
 		}
 		cpu.code.big=false;
+		DestroyConditionFlags();
 		return;
 	} else {	/* Protected mode IRET */
 		if (reg_flags & FLAG_VM) {
@@ -686,6 +698,7 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 					CPU_SetFlags(CPU_Pop16(),FMASK_NORMAL|FLAG_NT);
 				}
 				cpu.code.big=false;
+				DestroyConditionFlags();
 				return;
 			}
 		}
@@ -717,6 +730,7 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 				n_gs=CPU_Pop32() & 0xffff;
 
 				CPU_SetFlags(n_flags,FMASK_ALL | FLAG_VM);
+				DestroyConditionFlags();
 				cpu.cpl=3;
 
 				CPU_SetSegGeneral(ss,n_ss);
@@ -779,6 +793,7 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			Bitu mask=cpu.cpl ? (FMASK_NORMAL | FLAG_NT) : FMASK_ALL;
 			if (GETFLAG_IOPL<cpu.cpl) mask &= (~FLAG_IF);
 			CPU_SetFlags(n_flags,mask);
+			DestroyConditionFlags();
 			LOG(LOG_CPU,LOG_NORMAL)("IRET:Same level:%X:%X big %d",n_cs_sel,n_eip,cpu.code.big);
 		} else {
 			/* Return to outer level */
@@ -823,6 +838,7 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			Bitu mask=cpu.cpl ? (FMASK_NORMAL | FLAG_NT) : FMASK_ALL;
 			if (GETFLAG_IOPL<cpu.cpl) mask &= (~FLAG_IF);
 			CPU_SetFlags(n_flags,mask);
+			DestroyConditionFlags();
 
 			cpu.cpl=n_cs_rpl;
 			reg_eip=n_eip;
@@ -1163,8 +1179,8 @@ call_code:
 			LOG(LOG_CPU,LOG_NORMAL)("CALL:TSS to %X",selector);
 			CPU_SwitchTask(selector,TSwitch_CALL_INT,oldeip);
 			break;
-		case DESC_INVALID:
-			// used by some installers
+		case DESC_DATA_EU_RW_NA:	// vbdos
+		case DESC_INVALID:			// used by some installers
 			CPU_Exception(EXCEPTION_GP,selector & 0xfffc);
 			return;
 		default:
@@ -1377,8 +1393,8 @@ RET_same_level:
 }
 
 
-void CPU_SLDT(Bitu & selector) {
-	selector=cpu.gdt.SLDT();
+Bitu CPU_SLDT(void) {
+	return cpu.gdt.SLDT();
 }
 
 bool CPU_LLDT(Bitu selector) {
@@ -1390,8 +1406,8 @@ bool CPU_LLDT(Bitu selector) {
 	return false;
 }
 
-void CPU_STR(Bitu & selector) {
-	selector=cpu_tss.selector;
+Bitu CPU_STR(void) {
+	return cpu_tss.selector;
 }
 
 bool CPU_LTR(Bitu selector) {
@@ -1433,14 +1449,18 @@ void CPU_LIDT(Bitu limit,Bitu base) {
 	cpu.idt.SetBase(base);
 }
 
-void CPU_SGDT(Bitu & limit,Bitu & base) {
-	limit=cpu.gdt.GetLimit();
-	base=cpu.gdt.GetBase();
+Bitu CPU_SGDT_base(void) {
+	return cpu.gdt.GetBase();
+}
+Bitu CPU_SGDT_limit(void) {
+	return cpu.gdt.GetLimit();
 }
 
-void CPU_SIDT(Bitu & limit,Bitu & base) {
-	limit=cpu.idt.GetLimit();
-	base=cpu.idt.GetBase();
+Bitu CPU_SIDT_base(void) {
+	return cpu.idt.GetBase();
+}
+Bitu CPU_SIDT_limit(void) {
+	return cpu.idt.GetLimit();
 }
 
 
@@ -1467,10 +1487,15 @@ void CPU_SET_CRX(Bitu cr,Bitu value) {
 				} else {
 					GFX_SetTitle(-1,-1,false);
 				}
- #if (C_DYNAMIC_X86)
+#if (C_DYNAMIC_X86)
 				if (CPU_AutoDetermineMode&CPU_AUTODETERMINE_CORE) {
 					CPU_Core_Dyn_X86_Cache_Init(true);
 					cpudecoder=&CPU_Core_Dyn_X86_Run;
+				}
+#elif (C_DYNREC)
+				if (CPU_AutoDetermineMode&CPU_AUTODETERMINE_CORE) {
+					CPU_Core_Dynrec_Cache_Init(true);
+					cpudecoder=&CPU_Core_Dynrec_Run;
 				}
 #endif
 				CPU_AutoDetermineMode<<=CPU_AUTODETERMINE_SHIFT;
@@ -1610,11 +1635,11 @@ bool CPU_READ_TRX(Bitu tr,Bit32u & retvalue) {
 }
 
 
-void CPU_SMSW(Bitu & word) {
-	word=cpu.cr0;
+Bitu CPU_SMSW(void) {
+	return cpu.cr0;
 }
 
-Bitu CPU_LMSW(Bitu word) {
+bool CPU_LMSW(Bitu word) {
 	if (cpu.pmode && (cpu.cpl>0)) return CPU_PrepareException(EXCEPTION_GP,0);
 	word&=0xf;
 	if (cpu.cr0 & 1) word|=1; 
@@ -1624,6 +1649,7 @@ Bitu CPU_LMSW(Bitu word) {
 }
 
 void CPU_ARPL(Bitu & dest_sel,Bitu src_sel) {
+	FillFlags();
 	if ((dest_sel & 3) < (src_sel & 3)) {
 		dest_sel=(dest_sel & 0xfffc) + (src_sel & 3);
 //		dest_sel|=0xff3f0000;
@@ -1634,6 +1660,7 @@ void CPU_ARPL(Bitu & dest_sel,Bitu src_sel) {
 }
 	
 void CPU_LAR(Bitu selector,Bitu & ar) {
+	FillFlags();
 	if (selector == 0) {
 		SETFLAGBIT(ZF,false);
 		return;
@@ -1685,6 +1712,7 @@ void CPU_LAR(Bitu selector,Bitu & ar) {
 }
 
 void CPU_LSL(Bitu selector,Bitu & limit) {
+	FillFlags();
 	if (selector == 0) {
 		SETFLAGBIT(ZF,false);
 		return;
@@ -1727,6 +1755,7 @@ void CPU_LSL(Bitu selector,Bitu & limit) {
 }
 
 void CPU_VERR(Bitu selector) {
+	FillFlags();
 	if (selector == 0) {
 		SETFLAGBIT(ZF,false);
 		return;
@@ -1759,6 +1788,7 @@ void CPU_VERR(Bitu selector) {
 }
 
 void CPU_VERW(Bitu selector) {
+	FillFlags();
 	if (selector == 0) {
 		SETFLAGBIT(ZF,false);
 		return;
@@ -2050,6 +2080,8 @@ public:
 		CPU_Core_Full_Init();
 #if (C_DYNAMIC_X86)
 		CPU_Core_Dyn_X86_Init();
+#elif (C_DYNREC)
+		CPU_Core_Dynrec_Init();
 #endif
 		MAPPER_AddHandler(CPU_CycleDecrease,MK_f11,MMOD1,"cycledown","Dec Cycles");
 		MAPPER_AddHandler(CPU_CycleIncrease,MK_f12,MMOD1,"cycleup"  ,"Inc Cycles");
@@ -2153,6 +2185,13 @@ public:
 			cpudecoder=&CPU_Core_Normal_Run;
 			CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CORE;
 		} 
+#elif (C_DYNREC)
+		else if (!strcasecmp(core,"dynamic")) {
+			cpudecoder=&CPU_Core_Dynrec_Run;
+		} else if (!strcasecmp(core,"auto")) {
+			cpudecoder=&CPU_Core_Normal_Run;
+			CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CORE;
+		} 
 #endif
 		else {
 			LOG_MSG("CPU:Unknown core type %s, switching back to normal.",core);
@@ -2160,6 +2199,8 @@ public:
 
 #if (C_DYNAMIC_X86)
 		CPU_Core_Dyn_X86_Cache_Init(!strcasecmp(core,"dynamic") || !strcasecmp(core,"dynamic_nodhfpu"));
+#elif (C_DYNREC)
+		CPU_Core_Dynrec_Cache_Init(!strcasecmp(core,"dynamic"));
 #endif
 	
 		if(CPU_CycleMax <= 0) CPU_CycleMax = 3000;
@@ -2177,6 +2218,8 @@ static CPU * test;
 void CPU_ShutDown(Section* sec) {
 #if (C_DYNAMIC_X86)
 	CPU_Core_Dyn_X86_Cache_Close();
+#elif (C_DYNREC)
+	CPU_Core_Dynrec_Cache_Close();
 #endif
 	delete test;
 }

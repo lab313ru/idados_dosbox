@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: debug.cpp,v 1.85 2007-02-25 18:38:00 c2woody Exp $ */
+/* $Id: debug.cpp,v 1.88 2007-06-12 20:22:07 c2woody Exp $ */
 
 #include "dosbox.h"
 #if C_DEBUG
@@ -775,7 +775,7 @@ static void DrawRegisters(void) {
 	}
 
 	wattrset(dbg.win_reg,0);
-	mvwprintw(dbg.win_reg,3,60,"%d       ",cycle_count);
+	mvwprintw(dbg.win_reg,3,60,"%u       ",cycle_count);
 	wrefresh(dbg.win_reg);
 #endif
 };
@@ -827,7 +827,7 @@ static void DrawCode(void)
 			line20[20 - drawsize*2] = ' ';
 		} else waddstr(dbg.win_code,line20);
 
-		char* res = 0;
+		char* res = "";
 		if (showExtend) res = AnalyzeInstruction(dline, saveSel);
 		// Spacepad it up to 28 characters
 		size_t dline_len = strlen(dline);
@@ -1823,13 +1823,12 @@ static void LogCPUInfo(void)
 	sprintf(out1,"IDT base=%08X limit=%08X",cpu.idt.GetBase(),cpu.idt.GetLimit());
 	LOG(LOG_MISC,LOG_ERROR)(out1);
 
-	Bitu sel;
+	Bitu sel=CPU_STR();
 	Descriptor desc;
-	CPU_STR(sel);
 	cpu.gdt.GetDescriptor(sel,desc);
 	sprintf(out1,"TR selector=%04X, base=%08X limit=%08X*%X",sel,desc.GetBase(),desc.GetLimit(),desc.saved.seg.g?0x4000:1);
 	LOG(LOG_MISC,LOG_ERROR)(out1);
-	sel=cpu.gdt.SLDT();
+	sel=CPU_SLDT();
 	cpu.gdt.GetDescriptor(sel,desc);
 	sprintf(out1,"LDT selector=%04X, base=%08X limit=%08X*%X",sel,desc.GetBase(),desc.GetLimit(),desc.saved.seg.g?0x4000:1);
 	LOG(LOG_MISC,LOG_ERROR)(out1);
@@ -2265,12 +2264,12 @@ void DEBUG_HeavyLogInstruction(void) {
 	inst.s_fs = SegValue(fs);
 	inst.s_gs = SegValue(gs);
 	inst.s_ss = SegValue(ss);
-	inst.c    = get_CF();
-	inst.z    = get_ZF();
-	inst.s    = get_SF();
-	inst.o    = get_OF();
-	inst.a    = get_AF();
-	inst.p    = get_PF();
+	inst.c    = get_CF()>0;
+	inst.z    = get_ZF()>0;
+	inst.s    = get_SF()>0;
+	inst.o    = get_OF()>0;
+	inst.a    = get_AF()>0;
+	inst.p    = get_PF()>0;
 	inst.i    = GETFLAGBOOL(IF);
 
 	if (++logCount >= LOGCPUMAX) logCount = 0;

@@ -66,7 +66,7 @@ public:
 		}
 	}
 	bool InvalidateRange(Bitu start,Bitu end) {
-		Bits index=1+(start>>DYN_HASH_SHIFT);
+		Bits index=1+(end>>DYN_HASH_SHIFT);
 		bool is_current_block=false;
 		Bit32u ip_point=SegPhys(cs)+reg_eip;
 		ip_point=((paging.tlb.phys_page[ip_point>>12]-phys_page)<<12)+(ip_point&0xfff);
@@ -457,8 +457,15 @@ static void cache_init(bool enable) {
 			}
 		}
 		if (cache_code_start_ptr==NULL) {
+#if defined (WIN32)
+			cache_code_start_ptr=(Bit8u*)VirtualAlloc(0,CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP-1+PAGESIZE_TEMP,
+				MEM_COMMIT,PAGE_EXECUTE_READWRITE);
+			if (!cache_code_start_ptr)
+				cache_code_start_ptr=(Bit8u*)malloc(CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP-1+PAGESIZE_TEMP);
+#else
 			cache_code_start_ptr=(Bit8u*)malloc(CACHE_TOTAL+CACHE_MAXSIZE+PAGESIZE_TEMP-1+PAGESIZE_TEMP);
-			if(!cache_code_start_ptr) E_Exit("Allocating dynamic cache failed");
+#endif
+			if(!cache_code_start_ptr) E_Exit("Allocating dynamic core cache memory failed");
 
 			cache_code=(Bit8u*)(((int)cache_code_start_ptr + PAGESIZE_TEMP-1) & ~(PAGESIZE_TEMP-1)); //MEM LEAK. store old pointer if you want to free it.
 
@@ -510,6 +517,8 @@ static void cache_close(void) {
 		cache_blocks = NULL;
 	}
 	if (cache_code_start_ptr != NULL) {
+		### care: under windows VirtualFree() has to be used if
+		###       VirtualAlloc was used for memory allocation
 		free(cache_code_start_ptr);
 		cache_code_start_ptr = NULL;
 	}

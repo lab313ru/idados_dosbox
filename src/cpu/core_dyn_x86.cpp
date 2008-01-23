@@ -27,6 +27,11 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#if defined (WIN32)
+#include <windows.h>
+#include <winbase.h>
+#endif
+
 #if (C_HAVE_MPROTECT)
 #include <sys/mman.h>
 
@@ -45,7 +50,7 @@
 #include "inout.h"
 #include "fpu.h"
 
-#define CACHE_MAXSIZE	(4096*2)
+#define CACHE_MAXSIZE	(4096*3)
 #define CACHE_TOTAL		(1024*1024*8)
 #define CACHE_PAGES		(512)
 #define CACHE_BLOCKS	(64*1024)
@@ -258,12 +263,11 @@ Bits CPU_Core_Dyn_X86_Run(void) {
 	/* Determine the linear address of CS:EIP */
 restart_core:
 	PhysPt ip_point=SegPhys(cs)+reg_eip;
-	Bitu ip_page=ip_point>>12;
 	#if C_HEAVY_DEBUG
 		if (DEBUG_HeavyIsBreakpoint()) return debugCallback;
 	#endif
 	CodePageHandler * chandler=0;
-	if (GCC_UNLIKELY(MakeCodePage(ip_page,chandler))) {
+	if (GCC_UNLIKELY(MakeCodePage(ip_point,chandler))) {
 		CPU_Exception(cpu.exception.which,cpu.exception.error);
 		goto restart_core;
 	}

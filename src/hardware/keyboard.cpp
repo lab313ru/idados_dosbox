@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: keyboard.cpp,v 1.37 2007-01-21 11:01:54 qbix79 Exp $ */
+/* $Id: keyboard.cpp,v 1.39 2007-06-12 20:22:08 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "keyboard.h"
@@ -66,7 +66,6 @@ static void KEYBOARD_TransferBuffer(Bitu val) {
 		LOG(LOG_KEYBOARD,LOG_NORMAL)("Transfer started with empty buffer");
 		return;
 	}
-	Bit8u data=keyb.buffer[keyb.pos];
 	KEYBOARD_SetPort60(keyb.buffer[keyb.pos]);
 	if (++keyb.pos>=KEYBUFSIZE) keyb.pos-=KEYBUFSIZE;
 	keyb.used--;
@@ -179,9 +178,13 @@ static Bitu read_p61(Bitu port,Bitu iolen) {
 	return port_61_data;
 }
 
+extern void TIMER_SetGate2(bool);
 static void write_p61(Bitu port,Bitu val,Bitu iolen) {
-	if ((port_61_data ^ val) & 3) PCSPEAKER_SetType(val & 3);
-	port_61_data=val;
+	if ((port_61_data ^ val) & 3) {
+		if((port_61_data ^ val) & 1) TIMER_SetGate2(val&0x1);
+		PCSPEAKER_SetType(val & 3);
+	}
+	port_61_data = val;
 }
 
 static void write_p64(Bitu port,Bitu val,Bitu iolen) {

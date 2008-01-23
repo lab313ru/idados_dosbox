@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: xms.cpp,v 1.46 2007-01-08 21:40:15 qbix79 Exp $ */
+/* $Id: xms.cpp,v 1.50 2007-08-15 19:09:25 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -81,7 +81,9 @@ struct XMS_Block {
 	bool	free;
 };
 
-#pragma pack (push,1)
+#ifdef _MSC_VER
+#pragma pack (1)
+#endif
 struct XMS_MemMove{
 	Bit32u length;
 	Bit16u src_handle;
@@ -96,7 +98,10 @@ struct XMS_MemMove{
 	} dest;
 
 } GCC_ATTRIBUTE(packed);
-#pragma pack (pop)
+#ifdef _MSC_VER
+#pragma pack ()
+#endif
+
 
 Bitu XMS_EnableA20(bool enable)
 {
@@ -229,7 +234,7 @@ Bitu XMS_GetHandleInformation(Bitu handle, Bit8u& lockCount, Bit8u& numFree, Bit
 	for (Bitu i=1;i<XMS_HANDLES;i++) {
 		if (xms_handles[i].free) numFree++;
 	}
-	size=xms_handles[handle].size;
+	size=(Bit16u)(xms_handles[handle].size);
 	return 0;
 };
 
@@ -257,15 +262,13 @@ static bool multiplex_xms(void) {
 	return false;
 
 };
-#define SET_RESULT(caller) { \
-res = caller; \
-if(res) reg_bl = res; \
-reg_ax = (res==0); \
+INLINE void SET_RESULT(Bitu res,bool touch_bl_on_succes=true) {
+	if(touch_bl_on_succes || res) reg_bl = (Bit8u)res;
+	reg_ax = (res==0);
 }
 
 Bitu XMS_Handler(void) {
 //	LOG(LOG_MISC,LOG_ERROR)("XMS: CALL %02X",reg_ah);
-	Bitu res = 0;
 	switch (reg_ah) {
 
 	case XMS_GET_VERSION:										/* 00 */
@@ -310,12 +313,12 @@ Bitu XMS_Handler(void) {
 		SET_RESULT(XMS_FreeMemory(reg_dx));
 		break;
 	case XMS_MOVE_EXTENDED_MEMORY_BLOCK:						/* 0b */
-		SET_RESULT(XMS_MoveMemory(SegPhys(ds)+reg_si));
+		SET_RESULT(XMS_MoveMemory(SegPhys(ds)+reg_si),false);
 		break;
 	case XMS_LOCK_EXTENDED_MEMORY_BLOCK: {						/* 0c */
 		Bit32u address;
-		res = XMS_LockMemory(reg_dx, address);
-		if(res) reg_bl = res;
+		Bitu res = XMS_LockMemory(reg_dx, address);
+		if(res) reg_bl = (Bit8u)res;
 		reg_ax = (res==0);
 		if (res==0) { // success
 			reg_bx=(Bit16u)(address & 0xFFFF);

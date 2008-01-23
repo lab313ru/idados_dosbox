@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_cmds.cpp,v 1.73 2007-01-21 16:18:12 qbix79 Exp $ */
+/* $Id: shell_cmds.cpp,v 1.78 2007-08-17 17:58:46 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -62,18 +62,22 @@ static SHELL_Cmd cmd_list[]={
 {	"PATH",		1,			&DOS_Shell::CMD_PATH,		"SHELL_CMD_PATH_HELP"},
 {	"VER",		0,			&DOS_Shell::CMD_VER,		"SHELL_CMD_VER_HELP"},
 {0,0,0,0}
-};
-bool DOS_Shell::CheckConfig(char* cmd,char*line) {
-	Section* test = control->GetSectionFromProperty(cmd);
+}; 
+
+static char empty_char = 0;
+static char* empty_string = &empty_char;
+
+bool DOS_Shell::CheckConfig(char* cmd_in,char*line) {
+	Section* test = control->GetSectionFromProperty(cmd_in);
 	if(!test) return false;
 	if(line && !line[0]) {
-		char const* val = test->GetPropValue(cmd);
+		char const* val = test->GetPropValue(cmd_in);
 		if(val) WriteOut("%s\n",val);
 		return true;
 	}
 	char newcom[1024]; newcom[0] = 0; strcpy(newcom,"z:\\config ");
 	strcat(newcom,test->GetName());	strcat(newcom," ");
-	strcat(newcom,cmd);strcat(newcom,line);
+	strcat(newcom,cmd_in);strcat(newcom,line);
 	DoCommand(newcom);
 	return true;
 }
@@ -81,8 +85,8 @@ bool DOS_Shell::CheckConfig(char* cmd,char*line) {
 void DOS_Shell::DoCommand(char * line) {
 /* First split the line into command and arguments */
 	line=trim(line);
-	char cmd[CMD_MAXLINE];
-	char * cmd_write=cmd;
+	char cmd_buffer[CMD_MAXLINE];
+	char * cmd_write=cmd_buffer;
 	while (*line) {
 		if (*line==32) break;
 		if (*line=='/') break;
@@ -92,7 +96,7 @@ void DOS_Shell::DoCommand(char * line) {
 			*cmd_write=0;
 			Bit32u cmd_index=0;
 			while (cmd_list[cmd_index].name) {
-				if (strcasecmp(cmd_list[cmd_index].name,cmd)==0) {
+				if (strcasecmp(cmd_list[cmd_index].name,cmd_buffer)==0) {
 					(this->*(cmd_list[cmd_index].handler))(line);
 			 		return;
 				}
@@ -102,20 +106,20 @@ void DOS_Shell::DoCommand(char * line) {
 		*cmd_write++=*line++;
 	}
 	*cmd_write=0;
-	if (strlen(cmd)==0) return;
+	if (strlen(cmd_buffer)==0) return;
 /* Check the internal list */
 	Bit32u cmd_index=0;
 	while (cmd_list[cmd_index].name) {
-		if (strcasecmp(cmd_list[cmd_index].name,cmd)==0) {
+		if (strcasecmp(cmd_list[cmd_index].name,cmd_buffer)==0) {
 			(this->*(cmd_list[cmd_index].handler))(line);
 			return;
 		}
 		cmd_index++;
 	}
 /* This isn't an internal command execute it */
-	if(Execute(cmd,line)) return;
-	if(CheckConfig(cmd,line)) return;
-	WriteOut(MSG_Get("SHELL_EXECUTE_ILLEGAL_COMMAND"),cmd);
+	if(Execute(cmd_buffer,line)) return;
+	if(CheckConfig(cmd_buffer,line)) return;
+	WriteOut(MSG_Get("SHELL_EXECUTE_ILLEGAL_COMMAND"),cmd_buffer);
 }
 
 #define HELP(command) \
@@ -183,7 +187,7 @@ void DOS_Shell::CMD_HELP(char * args){
 	while (cmd_list[cmd_index].name) {
 		if (optall || !cmd_list[cmd_index].flags) {
 			WriteOut("<\033[34;1m%-8s\033[0m> %s",cmd_list[cmd_index].name,MSG_Get(cmd_list[cmd_index].help));
-			if(!(++write_count%22)) CMD_PAUSE("");
+			if(!(++write_count%22)) CMD_PAUSE(empty_string);
 		}
 		cmd_index++;
 	}
@@ -198,8 +202,9 @@ void DOS_Shell::CMD_RENAME(char * args){
 	char* slash = strrchr(arg1,'\\');
 	if(slash) { 
 		slash++;
-		//If directory specified (crystal caves installer)
-		// rename from c:\X : rename c:\abc.exe abc.shr. File must appear in C:\ 
+		/* If directory specified (crystal caves installer)
+		 * rename from c:\X : rename c:\abc.exe abc.shr. 
+		 * File must appear in C:\ */ 
 		
 		char dir_source[DOS_PATHLENGTH]={0};
 		//Copy first and then modify, makes GCC happy
@@ -263,7 +268,29 @@ void DOS_Shell::CMD_CHDIR(char * args) {
 	} else if(strlen(args) == 2 && args[1]==':') {
 		WriteOut(MSG_Get("SHELL_CMD_CHDIR_HINT"),toupper(*reinterpret_cast<unsigned char*>(&args[0])));
 	} else 	if (!DOS_ChangeDir(args)) {
-		WriteOut(MSG_Get("SHELL_CMD_CHDIR_ERROR"),args);
+		/* Changedir failed. Check if the filename is longer then 8 and/or contains spaces */
+		char temp[DOS_PATHLENGTH];
+		safe_strncpy(temp,args,DOS_PATHLENGTH);
+		char* dot = strrchr(temp,'.');
+		if(dot) *dot = 0;
+		dot = strrchr(temp,' ');
+		if(dot) { /* Contains spaces */
+			*dot = 0;
+			if(strlen(temp) > 6) temp[6] = 0;
+			strcat(temp,"~1");
+			WriteOut(MSG_Get("SHELL_CMD_CHDIR_HINT_2"),temp);
+		} else if(strlen(temp) >8) {
+			temp[6] = 0;
+			strcat(temp,"~1");
+			WriteOut(MSG_Get("SHELL_CMD_CHDIR_HINT_2"),temp);
+		} else {
+			Bit8u drive=DOS_GetDefaultDrive()+'A';
+			if (drive=='Z') {
+				WriteOut(MSG_Get("SHELL_CMD_CHDIR_HINT_3"));
+			} else {
+				WriteOut(MSG_Get("SHELL_CMD_CHDIR_ERROR"),args);
+			}
+		}
 	}
 };
 
@@ -331,7 +358,7 @@ void DOS_Shell::CMD_DIR(char * args) {
 	}
    
 	bool optW=ScanCMDBool(args,"W");
-	bool optS=ScanCMDBool(args,"S");
+	ScanCMDBool(args,"S");
 	bool optP=ScanCMDBool(args,"P");
 	bool optAD=ScanCMDBool(args,"AD");
 	char * rem=ScanCMDRemain(args);
@@ -398,18 +425,18 @@ void DOS_Shell::CMD_DIR(char * args) {
 
 		/* Skip non-directories if option AD is present */
 		if(optAD && !(attr&DOS_ATTR_DIRECTORY) ) continue;
-   
-		char * ext="";
+
+		char * ext = empty_string;
 		if (!optW && (name[0] != '.')) {
 			ext = strrchr(name, '.');
-			if (!ext) ext = "";
-			else *ext++ = '\0';
+			if (!ext) ext = empty_string;
+			else *ext++ = 0;
 		}
-		Bit8u day	= date & 0x001f;
-		Bit8u month	= (date >> 5) & 0x000f;
-		Bit16u year = (date >> 9) + 1980;
-		Bit8u hour	= (time >> 5 ) >> 6;
-		Bit8u minute = (time >> 5) & 0x003f;
+		Bit8u day	= (Bit8u)(date & 0x001f);
+		Bit8u month	= (Bit8u)((date >> 5) & 0x000f);
+		Bit16u year = (Bit16u)((date >> 9) + 1980);
+		Bit8u hour	= (Bit8u)((time >> 5 ) >> 6);
+		Bit8u minute = (Bit8u)((time >> 5) & 0x003f);
 
 		/* output the file */
 		if (attr & DOS_ATTR_DIRECTORY) {
@@ -435,7 +462,7 @@ void DOS_Shell::CMD_DIR(char * args) {
 		}
 		if(optP) {
 			if(!(++p_count%(22*w_size))) {
-				CMD_PAUSE("");
+				CMD_PAUSE(empty_string);
 			}
 		}
 	} while ( (ret=DOS_FindNext()) );
@@ -742,6 +769,13 @@ void DOS_Shell::CMD_GOTO(char * args) {
 	StripSpaces(args);
 	if (!bf) return;
 	if (*args &&(*args==':')) args++;
+	//label ends at the first space
+	char* non_space = args;
+	while (*non_space) {
+		if((*non_space == ' ') || (*non_space == '\t')) 
+			*non_space = 0; 
+		else non_space++;
+	}
 	if (!*args) {
 		WriteOut(MSG_Get("SHELL_CMD_GOTO_MISSING_LABEL"));
 		return;
@@ -860,7 +894,7 @@ void DOS_Shell::CMD_LOADHIGH(char *args){
 	HELP("LOADHIGH");
 	Bit16u umb_start=dos_infoblock.GetStartOfUMBChain();
 	Bit8u umb_flag=dos_infoblock.GetUMBChainState();
-	Bit8u old_memstrat=DOS_GetMemAllocStrategy()&0xff;
+	Bit8u old_memstrat=(Bit8u)(DOS_GetMemAllocStrategy()&0xff);
 	if (umb_start==0x9fff) {
 		if ((umb_flag&1)==0) DOS_LinkUMBsToMemChain(1);
 		DOS_SetMemAllocStrategy(0x80);	// search in UMBs first
@@ -955,7 +989,7 @@ void DOS_Shell::CMD_VER(char *args) {
 		char* word = StripWord(args);
 		if(strcasecmp(word,"set")) return;
 		word = StripWord(args);
-		dos.version.major = atoi(word);
-		dos.version.minor = atoi(args);
+		dos.version.major = (Bit8u)(atoi(word));
+		dos.version.minor = (Bit8u)(atoi(args));
 	} else WriteOut(MSG_Get("SHELL_CMD_VER_VER"),VERSION,dos.version.major,dos.version.minor);
 }

@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: bios_disk.cpp,v 1.33 2007-01-21 16:21:22 c2woody Exp $ */
+/* $Id: bios_disk.cpp,v 1.37 2007-07-14 16:42:38 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "callback.h"
@@ -40,7 +40,7 @@ diskGeo DiskGeometryList[] = {
 	{1200, 15, 2, 80, 2},
 	{1440, 18, 2, 80, 4},
 	{2880, 36, 2, 80, 6},
-	{0, 0, 0 , 0},
+	{0, 0, 0, 0, 0}
 };
 
 Bitu call_int13;
@@ -65,8 +65,8 @@ void updateDPT(void) {
 	if(imageDiskList[2] != NULL) {
 		PhysPt dp0physaddr=CALLBACK_PhysPointer(diskparm0);
 		imageDiskList[2]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
-		phys_writew(dp0physaddr,tmpcyl);
-		phys_writeb(dp0physaddr+0x2,tmpheads);
+		phys_writew(dp0physaddr,(Bit16u)tmpcyl);
+		phys_writeb(dp0physaddr+0x2,(Bit8u)tmpheads);
 		phys_writew(dp0physaddr+0x3,0);
 		phys_writew(dp0physaddr+0x5,(Bit16u)-1);
 		phys_writeb(dp0physaddr+0x7,0);
@@ -74,15 +74,15 @@ void updateDPT(void) {
 		phys_writeb(dp0physaddr+0x9,0);
 		phys_writeb(dp0physaddr+0xa,0);
 		phys_writeb(dp0physaddr+0xb,0);
-		phys_writew(dp0physaddr+0xc,tmpcyl);
-		phys_writeb(dp0physaddr+0xe,tmpsect);
+		phys_writew(dp0physaddr+0xc,(Bit16u)tmpcyl);
+		phys_writeb(dp0physaddr+0xe,(Bit8u)tmpsect);
 	}
 	if(imageDiskList[3] != NULL) {
 		PhysPt dp1physaddr=CALLBACK_PhysPointer(diskparm1);
 		imageDiskList[3]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
-		phys_writew(dp1physaddr,tmpcyl);
-		phys_writeb(dp1physaddr+0x2,tmpheads);
-		phys_writeb(dp1physaddr+0xe,tmpsect);
+		phys_writew(dp1physaddr,(Bit16u)tmpcyl);
+		phys_writeb(dp1physaddr+0x2,(Bit8u)tmpheads);
+		phys_writeb(dp1physaddr+0xe,(Bit8u)tmpsect);
 	}
 }
 
@@ -173,9 +173,9 @@ Bit8u imageDisk::Write_AbsoluteSector(Bit32u sectnum, void *data) {
 	//LOG_MSG("Writing sectors to %ld at bytenum %d", sectnum, bytenum);
 
 	fseek(diskimg,bytenum,SEEK_SET);
-	fwrite(data, sector_size, 1, diskimg);
+	size_t ret=fwrite(data, sector_size, 1, diskimg);
 
-	return 0x00;
+	return ((ret>0)?0x00:0x05);
 
 }
 
@@ -199,7 +199,10 @@ imageDisk::imageDisk(FILE *imgFile, Bit8u *imgName, Bit32u imgSizeK, bool isHard
 		Bitu i=0;
 		bool founddisk = false;
 		while (DiskGeometryList[i].ksize!=0x0) {
-			if (DiskGeometryList[i].ksize==imgSizeK) {
+			if ((DiskGeometryList[i].ksize==imgSizeK) ||
+				(DiskGeometryList[i].ksize+1==imgSizeK)) {
+				if (DiskGeometryList[i].ksize!=imgSizeK)
+					LOG_MSG("ImageLoader: image file with additional data, might not load!");
 				founddisk = true;
 				active = true;
 				floppytype = i;
@@ -222,7 +225,7 @@ imageDisk::imageDisk(FILE *imgFile, Bit8u *imgName, Bit32u imgSizeK, bool isHard
 				equipment|=(numofdisks<<6);
 			} else equipment|=1;
 			mem_writew(BIOS_CONFIGURATION,equipment);
-			CMOS_SetRegister(0x14, equipment);
+			CMOS_SetRegister(0x14, (Bit8u)(equipment&0xff));
 		}
 	}
 }
@@ -244,7 +247,7 @@ void imageDisk::Get_Geometry(Bit32u * getHeads, Bit32u *getCyl, Bit32u *getSect,
 
 Bit8u imageDisk::GetBiosType(void) {
 	if(!hardDrive) {
-		return DiskGeometryList[floppytype].biosval;
+		return (Bit8u)DiskGeometryList[floppytype].biosval;
 	} else return 0;
 }
 
@@ -298,11 +301,11 @@ static Bitu INT13_DiskHandler(void) {
 	Bit16u segat, bufptr;
 	Bit8u sectbuf[512];
 	Bitu  drivenum;
-	int i,t;
+	Bitu  i,t;
 	last_drive = reg_dl;
 	drivenum = GetDosDriveNumber(reg_dl);
 	bool any_images = false;
-	for(Bitu i = 0;i < MAX_DISK_IMAGES;i++) {
+	for(i = 0;i < MAX_DISK_IMAGES;i++) {
 		if(imageDiskList[i]) any_images=true;
 	}
 
@@ -436,16 +439,20 @@ static Bitu INT13_DiskHandler(void) {
 		if(driveInactive(drivenum)) {
 			last_status = 0x07;
 			reg_ah = last_status;
-		CALLBACK_SCF(true);
+			CALLBACK_SCF(true);
 			return CBRET_NONE;
 		}
 		reg_ax = 0x00;
 		reg_bl = imageDiskList[drivenum]->GetBiosType();
 		Bit32u tmpheads, tmpcyl, tmpsect, tmpsize;
 		imageDiskList[drivenum]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
-		reg_ch = tmpcyl & 0xff;
-		reg_cl = (((tmpcyl >> 2) & 0xc0) | (tmpsect & 0x3f)); 
-		reg_dh = tmpheads-1;
+		if (tmpcyl==0) LOG(LOG_BIOS,LOG_ERROR)("INT13 DrivParm: cylinder count zero!");
+		else tmpcyl--;		// cylinder count -> max cylinder
+		if (tmpheads==0) LOG(LOG_BIOS,LOG_ERROR)("INT13 DrivParm: head count zero!");
+		else tmpheads--;	// head count -> max head
+		reg_ch = (Bit8u)(tmpcyl & 0xff);
+		reg_cl = (Bit8u)(((tmpcyl >> 2) & 0xc0) | (tmpsect & 0x3f)); 
+		reg_dh = (Bit8u)tmpheads;
 		last_status = 0x00;
 		if (reg_dl&0x80) {	// harddisks
 			reg_dl = 0;

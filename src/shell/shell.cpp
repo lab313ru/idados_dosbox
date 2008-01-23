@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.84 2007-02-22 08:34:10 qbix79 Exp $ */
+/* $Id: shell.cpp,v 1.88 2007-08-17 17:58:46 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -400,12 +400,16 @@ public:
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				upcase(name);
-				if(strstr(name,".BAT") == 0) {
-					autoexec[14].Install(name);
-				} else {
+				if(strstr(name,".BAT") != 0) {
 					/* BATch files are called else exit will not work */
 					autoexec[14].Install(std::string("CALL ") + name);
+				} else if((strstr(name,".IMG") != 0) || (strstr(name,".IMA") !=0)) {
+					/* Boot image files */
+					autoexec[14].Install(std::string("BOOT ") + name);
+				} else {
+					autoexec[14].Install(name);
 				}
+
 				if(addexit) autoexec[15].Install("exit");
 			}
 		}
@@ -420,10 +424,10 @@ void AUTOEXEC_Init(Section * sec) {
 	test = new AUTOEXEC(sec);
 }
 
-static char * path_string="PATH=Z:\\";
-static char * comspec_string="COMSPEC=Z:\\COMMAND.COM";
-static char * full_name="Z:\\COMMAND.COM";
-static char * init_line="/INIT AUTOEXEC.BAT";
+static char const * const path_string="PATH=Z:\\";
+static char const * const comspec_string="COMSPEC=Z:\\COMMAND.COM";
+static char const * const full_name="Z:\\COMMAND.COM";
+static char const * const init_line="/INIT AUTOEXEC.BAT";
 
 void SHELL_Init() {
 	/* Add messages */
@@ -435,6 +439,8 @@ void SHELL_Init() {
 	MSG_Add("SHELL_MISSING_PARAMETER","Required parameter missing.\n");
 	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s.\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT","To change to different drive type \033[31m%c:\033[0m\n");
+	MSG_Add("SHELL_CMD_CHDIR_HINT_2","directoryname is longer than 8 charachters and/or contains spaces.\nTry \033[31mcd %s\033[0m\n");
+	MSG_Add("SHELL_CMD_CHDIR_HINT_3","You are still on drive Z:, change to a mounted drive with \033[31mC:\033[0m.\n");
 	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s.\n");
 	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %s.\n");
 	MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s.\n");

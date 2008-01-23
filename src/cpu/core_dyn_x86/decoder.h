@@ -50,10 +50,11 @@ static struct DynDecode {
 	DynReg * segprefix;
 } decode;
 
-static bool MakeCodePage(Bitu lin_page,CodePageHandler * &cph) {
+static bool MakeCodePage(Bitu lin_addr,CodePageHandler * &cph) {
 	Bit8u rdval;
 	//Ensure page contains memory:
-	if (GCC_UNLIKELY(mem_readb_checked_x86(lin_page << 12,&rdval))) return true;
+	if (GCC_UNLIKELY(mem_readb_checked_x86(lin_addr,&rdval))) return true;
+	Bitu lin_page=lin_addr >> 12;
 	PageHandler * handler=paging.tlb.handler[lin_page];
 	if (handler->flags & PFLAG_HASCODE) {
 		cph=( CodePageHandler *)handler;
@@ -99,8 +100,10 @@ static Bit8u decode_fetchb(void) {
         /* Advance to the next page */
 		decode.active_block->page.end=4095;
 		/* trigger possible page fault here */
-		mem_readb((++decode.page.first) << 12);
-		MakeCodePage(decode.page.first,decode.page.code);
+		decode.page.first++;
+		Bitu fetchaddr=decode.page.first << 12;
+		mem_readb(fetchaddr);
+		MakeCodePage(fetchaddr,decode.page.code);
 		CacheBlock * newblock=cache_getblock();
 		decode.active_block->crossblock=newblock;
 		newblock->crossblock=decode.active_block;
@@ -142,7 +145,7 @@ static Bit32u decode_fetchd(void) {
 
 #define START_WMMEM 64
 
-static void INLINE decode_increase_wmapmask(Bitu size) {
+static INLINE void decode_increase_wmapmask(Bitu size) {
 	Bitu mapidx;
 	CacheBlock* activecb=decode.active_block; 
 	if (GCC_UNLIKELY(!activecb->cache.wmapmask)) {
@@ -252,7 +255,8 @@ static INLINE void dyn_set_eip_end(void) {
 
 static INLINE void dyn_set_eip_end(DynReg * endreg) {
 	gen_protectflags();
-	gen_dop_word(DOP_MOV,cpu.code.big,DREG(TMPW),DREG(EIP));
+	if (cpu.code.big) gen_dop_word(DOP_MOV,true,DREG(TMPW),DREG(EIP));
+	else gen_extend_word(false,DREG(TMPW),DREG(EIP));
 	gen_dop_word_imm(DOP_ADD,cpu.code.big,DREG(TMPW),decode.code-decode.code_start);
 }
 
@@ -923,7 +927,7 @@ static void dyn_pop(DynReg * dynreg,bool checked=true) {
 	}
 }
 
-static void INLINE dyn_get_modrm(void) {
+static INLINE void dyn_get_modrm(void) {
 	decode.modrm.val=decode_fetchb();
 	decode.modrm.mod=(decode.modrm.val >> 6) & 3;
 	decode.modrm.reg=(decode.modrm.val >> 3) & 7;
@@ -1183,7 +1187,7 @@ static void dyn_mov_ebgb(void) {
 	DynReg * rm_reg=&DynRegs[decode.modrm.reg&3];Bitu rm_regi=decode.modrm.reg&4;
 	if (decode.modrm.mod<3) {
 		dyn_fill_ea();
-		dyn_write_byte_release(DREG(EA),rm_reg,rm_regi);
+		dyn_write_byte_release(DREG(EA),rm_reg,rm_regi==4);
 	} else {
 		gen_dop_byte(DOP_MOV,&DynRegs[decode.modrm.rm&3],decode.modrm.rm&4,rm_reg,rm_regi);
 	}
@@ -1810,7 +1814,8 @@ static void dyn_call_near_imm(void) {
 	dyn_set_eip_end(DREG(TMPW));
 	dyn_push(DREG(TMPW));
 	gen_dop_word_imm(DOP_ADD,decode.big_op,DREG(TMPW),imm);
-	gen_dop_word(DOP_MOV,decode.big_op,DREG(EIP),DREG(TMPW));
+	if (cpu.code.big) gen_dop_word(DOP_MOV,true,DREG(EIP),DREG(TMPW));
+	else gen_extend_word(false,DREG(EIP),DREG(TMPW));
 	dyn_reduce_cycles();
 	dyn_save_critical_regs();
 	gen_jmp_ptr(&decode.block->link[0].to,offsetof(CacheBlock,cache.start));
@@ -2182,14 +2187,14 @@ restart_prefix:
 			gen_releasereg(DREG(ESP));
 			dyn_flags_gen_to_host();
 			gen_call_function((void *)&CPU_PUSHF,"%Rd%Id",DREG(TMPB),decode.big_op);
-			if (cpu.pmode) dyn_check_bool_exception(DREG(TMPB));
+			dyn_check_bool_exception(DREG(TMPB));
 			gen_releasereg(DREG(TMPB));
 			break;
 		case 0x9d:		//POPF
 			gen_releasereg(DREG(ESP));
 			gen_releasereg(DREG(FLAGS));
 			gen_call_function((void *)&CPU_POPF,"%Rd%Id",DREG(TMPB),decode.big_op);
-			if (cpu.pmode) dyn_check_bool_exception(DREG(TMPB));
+			dyn_check_bool_exception(DREG(TMPB));
 			dyn_flags_host_to_gen();
 			gen_releasereg(DREG(TMPB));
 			break;
@@ -2556,7 +2561,7 @@ restart_prefix:
 				dyn_save_critical_regs();
 				gen_call_function(
 					decode.modrm.reg == 3 ? (void*)&CPU_CALL : (void*)&CPU_JMP,
-					decode.big_op ? (char *)"%Id%Drw%Drd%Drd" : (char *)"%Id%Drw%Drw%Drd",
+					decode.big_op ? "%Id%Drw%Drd%Drd" : "%Id%Drw%Drw%Drd",
 					decode.big_op,DREG(EA),DREG(TMPW),DREG(TMPB));
 				dyn_flags_host_to_gen();
 				goto core_close_block;
@@ -2589,7 +2594,6 @@ illegalopcode:
 	dyn_closeblock();
 	goto finish_block;
 #if (C_DEBUG)
-illegalopcodefull:
 	dyn_set_eip_last();
 	dyn_reduce_cycles();
 	dyn_save_critical_regs();

@@ -16,8 +16,9 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_programs.cpp,v 1.69 2007-02-22 08:37:12 qbix79 Exp $ */
+/* $Id: dos_programs.cpp,v 1.77 2007-08-22 11:54:54 qbix79 Exp $ */
 
+#include "dosbox.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -34,6 +35,12 @@
 #include "dos_inc.h"
 #include "bios.h"
 
+#if defined HAVE_SYS_TYPES_H && defined HAVE_PWD_H
+#include <sys/types.h>
+#include <pwd.h>
+#endif
+
+
 #if defined(OS2)
 #define INCL DOSFILEMGR
 #define INCL_DOSERRORS
@@ -45,6 +52,24 @@ Bitu DEBUG_EnableDebugger(void);
 #endif
 
 void MSCDEX_SetCDInterface(int intNr, int forceCD);
+
+//Helper function for mount and imgmount to correctly find the path
+static void ResolveHomedir(std::string & temp_line) {
+	if(!temp_line.size() || temp_line[0] != '~') return; //No ~
+
+	if(temp_line.size() == 1 || temp_line[1] == CROSS_FILESPLIT) { //The ~ and ~/ variant
+		char * home = getenv("HOME");
+		if(home) temp_line.replace(0,1,std::string(home));
+#if defined HAVE_SYS_TYPES_H && defined HAVE_PWD_H
+	} else { // The ~username variant
+		std::string::size_type namelen = temp_line.find(CROSS_FILESPLIT);
+		if(namelen == std::string::npos) namelen = temp_line.size();
+		std::string username = temp_line.substr(1,namelen - 1);
+		struct passwd* pass = getpwnam(username.c_str());
+		if(pass) temp_line.replace(0,namelen,pass->pw_dir); //namelen -1 +1(for the ~)
+#endif // USERNAME lookup code
+	}
+}
 
 class MOUNT : public Program {
 public:
@@ -108,24 +133,30 @@ public:
 			Bit8u mediaid;
 			std::string str_size;
 			if (type=="floppy") {
-				str_size="512,1,2847,2847";/* All space free */
+				str_size="512,1,2880,2880";/* All space free */
 				mediaid=0xF0;		/* Floppy 1.44 media */
 			} else if (type=="dir") {
+				// 512*127*16513==~1GB total size
+				// 512*127*1700==~100MB total free size
 				str_size="512,127,16513,1700";
 				mediaid=0xF8;		/* Hard Disk */
 			} else if (type=="cdrom") {
-				str_size="650,127,16513,1700";
+				str_size="2048,1,65535,0";
 				mediaid=0xF8;		/* Hard Disk */
 			} else {
 				WriteOut(MSG_Get("PROGAM_MOUNT_ILL_TYPE"),type.c_str());
 				return;
 			}
-			/* Parse the free space in mb's */
+			/* Parse the free space in mb's (kb's for floppies) */
 			std::string mb_size;
 			if(cmd->FindString("-freesize",mb_size,true)) {
 				char teststr[1024];
 				Bit16u sizemb = static_cast<Bit16u>(atoi(mb_size.c_str()));
-				sprintf(teststr,"512,127,16513,%d",sizemb*1024*1024/(512*127));
+				if (type=="floppy") {
+					sprintf(teststr,"512,1,2880,%d",sizemb*1024/(512*1));
+				} else {
+					sprintf(teststr,"512,127,16513,%d",sizemb*1024*1024/(512*127));
+				}
 				str_size=teststr;
 			}
 		   
@@ -184,11 +215,9 @@ public:
 #else
 			if (stat(temp_line.c_str(),&test)) {
 				failed = true;
-				if(temp_line.size() && temp_line[0] == '~') {
-					char * home = getenv("HOME");
-					if(home) temp_line.replace(0,1,std::string(home));
-					if(!stat(temp_line.c_str(),&test)) failed = false;
-				}
+				ResolveHomedir(temp_line);
+				//Try again after resolving ~
+				if(!stat(temp_line.c_str(),&test)) failed = false;
 			}
 			if(failed) {
 #endif
@@ -220,9 +249,15 @@ public:
 				int num = -1;
 				cmd->FindInt("-usecd",num,true);
 				int error;
-				if (cmd->FindExist("-aspi",false))	MSCDEX_SetCDInterface(CDROM_USE_ASPI, num);	else
-				if (cmd->FindExist("-ioctl",false)) MSCDEX_SetCDInterface(CDROM_USE_IOCTL, num);
-				else								MSCDEX_SetCDInterface(CDROM_USE_SDL, num);
+				if (cmd->FindExist("-aspi",false)) {
+					MSCDEX_SetCDInterface(CDROM_USE_ASPI, num);
+				} else if (cmd->FindExist("-ioctl",false)) {
+					MSCDEX_SetCDInterface(CDROM_USE_IOCTL, num);
+				} else if (cmd->FindExist("-noioctl",false)) {
+					MSCDEX_SetCDInterface(CDROM_USE_SDL, num);
+				} else {
+					MSCDEX_SetCDInterface(CDROM_USE_IOCTL, num);
+				}
 				newdrive  = new cdromDrive(drive,temp_line.c_str(),sizes[0],bit8size,sizes[2],0,mediaid,error);
 				// Check Mscdex, if it worked out...
 				switch (error) {
@@ -374,21 +409,30 @@ private:
 			ldp=dynamic_cast<localDrive*>(Drives[drive]);
 			if(!ldp) return NULL;
 
-			tmpfile = ldp->GetSystemFilePtr(fullname, "r");
+			tmpfile = ldp->GetSystemFilePtr(fullname, "rb");
 			if(tmpfile == NULL) {
 				if (!tryload) *error=1;
 				return NULL;
 			}
-			fclose(tmpfile);
-			tmpfile = ldp->GetSystemFilePtr(fullname, "rb+");
-			if(tmpfile == NULL) {
-				if (!tryload) *error=2;
-				return NULL;
-			}
 
+			// get file size
 			fseek(tmpfile,0L, SEEK_END);
 			*ksize = (ftell(tmpfile) / 1024);
 			*bsize = ftell(tmpfile);
+			fclose(tmpfile);
+
+			tmpfile = ldp->GetSystemFilePtr(fullname, "rb+");
+			if(tmpfile == NULL) {
+//				if (!tryload) *error=2;
+//				return NULL;
+				WriteOut(MSG_Get("PROGRAM_BOOT_WRITE_PROTECTED"));
+				tmpfile = ldp->GetSystemFilePtr(fullname, "rb");
+				if(tmpfile == NULL) {
+					if (!tryload) *error=1;
+					return NULL;
+				}
+			}
+
 			return tmpfile;
 		}
 		catch(...) {
@@ -401,12 +445,19 @@ private:
 		FILE* tmpfile = getFSFile_mounted(filename,ksize,bsize,&error);
 		if(tmpfile) return tmpfile;
 		//File not found on mounted filesystem. Try regular filesystem
-		tmpfile = fopen(filename,"rb+");
+		std::string filename_s(filename);
+		ResolveHomedir(filename_s);
+		tmpfile = fopen(filename_s.c_str(),"rb+");
 		if(!tmpfile) {
-			if( (tmpfile = fopen(filename,"r")) ) {
+			if( (tmpfile = fopen(filename_s.c_str(),"rb")) ) {
 				//File exists; So can't be opened in correct mode => error 2
-				fclose(tmpfile);
-				if(tryload) error = 2;
+//				fclose(tmpfile);
+//				if(tryload) error = 2;
+				WriteOut(MSG_Get("PROGRAM_BOOT_WRITE_PROTECTED"));
+				fseek(tmpfile,0L, SEEK_END);
+				*ksize = (ftell(tmpfile) / 1024);
+				*bsize = ftell(tmpfile);
+				return tmpfile;
 			}
 			// Give the delayed errormessages from the mounted variant (or from above)
 			if(error == 1) WriteOut(MSG_Get("PROGRAM_BOOT_NOT_EXIST"));
@@ -477,9 +528,9 @@ public:
 				if((temp_line == "-e") || (temp_line == "-E")) {
 					/* Command mode for PCJr cartridges */
 					i++;
-					if(cmd->FindCommand(i+1, temp_line)) {
-						for(size_t i=0;i<temp_line.size();i++) temp_line[i]=toupper(temp_line[i]);
-						cart_cmd=temp_line;
+					if(cmd->FindCommand(i + 1, temp_line)) {
+						for(size_t ct = 0;ct < temp_line.size();ct++) temp_line[ct] = toupper(temp_line[ct]);
+						cart_cmd = temp_line;
 					} else {
 						printError();
 						return;
@@ -886,6 +937,7 @@ public:
 		Bit8u mediaid;
 		if (type=="floppy" || type=="hdd" || type=="iso") {
 			Bit16u sizes[4];
+			bool imgsizedetect=false;
 			
 			std::string str_size;
 			mediaid=0xF8;
@@ -899,21 +951,21 @@ public:
 			} 
 			cmd->FindString("-size",str_size,true);
 			if ((type=="hdd") && (str_size.size()==0)) {
-				WriteOut(MSG_Get("PROGRAM_IMGMOUNT_SPECIFY_GEOMETRY"));
-				return;
+				imgsizedetect=true;
+			} else {
+				char number[20];
+				const char * scan=str_size.c_str();
+				Bitu index=0;Bitu count=0;
+				
+				while (*scan) {
+					if (*scan==',') {
+						number[index]=0;sizes[count++]=atoi(number);
+						index=0;
+					} else number[index++]=*scan;
+					scan++;
+				}
+				number[index]=0;sizes[count++]=atoi(number);
 			}
-			char number[20];
-			const char * scan=str_size.c_str();
-			Bitu index=0;Bitu count=0;
-			
-			while (*scan) {
-				if (*scan==',') {
-					number[index]=0;sizes[count++]=atoi(number);
-					index=0;
-				} else number[index++]=*scan;
-				scan++;
-			}
-			number[index]=0;sizes[count++]=atoi(number);
 		
 			if(fstype=="fat" || fstype=="iso") {
 				// get the drive letter
@@ -947,29 +999,36 @@ public:
 				
 				struct stat test;
 				if (stat(temp_line.c_str(),&test)) {
-					// convert dosbox filename to system filename
-					char fullname[CROSS_LEN];
-					char tmp[CROSS_LEN];
-					safe_strncpy(tmp, temp_line.c_str(), CROSS_LEN);
-					
-					Bit8u dummy;
-					if (!DOS_MakeName(tmp, fullname, &dummy) || strncmp(Drives[dummy]->GetInfo(),"local directory",15)) {
-						WriteOut(MSG_Get("PROGRAM_IMGMOUNT_NON_LOCAL_DRIVE"));
-						return;
-					}
-					
-					localDrive *ldp = (localDrive*)Drives[dummy];
-					ldp->GetSystemFilename(tmp, fullname);
-					temp_line = tmp;
-					
-					if (stat(temp_line.c_str(),&test)) {
-						WriteOut(MSG_Get("PROGRAM_IMGMOUNT_FILE_NOT_FOUND"));
-						return;
-					}
-					
-					if ((test.st_mode & S_IFDIR)) {
-						WriteOut(MSG_Get("PROGRAM_IMGMOUNT_MOUNT"));
-						return;
+					//See if it works if the ~ are written out
+					std::string homedir(temp_line);
+					ResolveHomedir(homedir);
+					if(!stat(homedir.c_str(),&test)) {
+						temp_line = homedir;
+					} else {
+						// convert dosbox filename to system filename
+						char fullname[CROSS_LEN];
+						char tmp[CROSS_LEN];
+						safe_strncpy(tmp, temp_line.c_str(), CROSS_LEN);
+
+						Bit8u dummy;
+						if (!DOS_MakeName(tmp, fullname, &dummy) || strncmp(Drives[dummy]->GetInfo(),"local directory",15)) {
+							WriteOut(MSG_Get("PROGRAM_IMGMOUNT_NON_LOCAL_DRIVE"));
+							return;
+						}
+
+						localDrive *ldp = (localDrive*)Drives[dummy];
+						ldp->GetSystemFilename(tmp, fullname);
+						temp_line = tmp;
+
+						if (stat(temp_line.c_str(),&test)) {
+							WriteOut(MSG_Get("PROGRAM_IMGMOUNT_FILE_NOT_FOUND"));
+							return;
+						}
+
+						if ((test.st_mode & S_IFDIR)) {
+							WriteOut(MSG_Get("PROGRAM_IMGMOUNT_MOUNT"));
+							return;
+						}
 					}
 				}
 				paths.push_back(temp_line);
@@ -986,6 +1045,35 @@ public:
 			}
 
 			if(fstype=="fat") {
+				if (imgsizedetect) {
+					FILE * diskfile = fopen(temp_line.c_str(), "rb+");
+					if(!diskfile) {
+						WriteOut(MSG_Get("PROGRAM_IMGMOUNT_INVALID_IMAGE"));
+						return;
+					}
+					fseek(diskfile, 0L, SEEK_END);
+					Bit32u fcsize = (Bit32u)(ftell(diskfile) / 512L);
+					Bit8u buf[512];
+					fseek(diskfile, 0L, SEEK_SET);
+					if (fread(buf,sizeof(Bit8u),512,diskfile)<512) {
+						fclose(diskfile);
+						WriteOut(MSG_Get("PROGRAM_IMGMOUNT_INVALID_IMAGE"));
+						return;
+					}
+					fclose(diskfile);
+					if ((buf[510]!=0x55) || (buf[511]!=0xaa)) {
+						WriteOut(MSG_Get("PROGRAM_IMGMOUNT_INVALID_GEOMETRY"));
+						return;
+					}
+					Bitu sectors=(Bitu)(fcsize/(16*63));
+					if (sectors*16*63!=fcsize) {
+						WriteOut(MSG_Get("PROGRAM_IMGMOUNT_INVALID_GEOMETRY"));
+						return;
+					}
+					sizes[0]=512;	sizes[1]=63;	sizes[2]=16;	sizes[3]=sectors;
+					LOG_MSG("autosized image file: %d:%d:%d:%d",sizes[0],sizes[1],sizes[2],sizes[3]);
+				}
+
 				newdrive=new fatDrive(temp_line.c_str(),sizes[0],sizes[1],sizes[2],sizes[3],0);
 				if(!(dynamic_cast<fatDrive*>(newdrive))->created_succesfully) {
 					delete newdrive;
@@ -1039,7 +1127,9 @@ public:
 			MSCDEX_SetCDInterface(CDROM_USE_SDL, -1);
 			// create new drives for all images
 			std::vector<DOS_Drive*> isoDisks;
-			for (int i = 0; i < paths.size(); i++) {
+			std::vector<std::string>::size_type i;
+			std::vector<DOS_Drive*>::size_type ct;
+			for (i = 0; i < paths.size(); i++) {
 				int error = -1;
 				DOS_Drive* newDrive = new isoDrive(drive, paths[i].c_str(), mediaid, error);
 				isoDisks.push_back(newDrive);
@@ -1055,15 +1145,15 @@ public:
 				}
 				// error: clean up and leave
 				if (error) {
-					for(int i = 0; i < isoDisks.size(); i++) {
-						delete isoDisks[i];
+					for(ct = 0; ct < isoDisks.size(); ct++) {
+						delete isoDisks[ct];
 					}
 					return;
 				}
 			}
 			// Update DriveManager
-			for(int i = 0; i < isoDisks.size(); i++) {
-				DriveManager::AppendDisk(drive - 'A', isoDisks[i]);
+			for(ct = 0; ct < isoDisks.size(); ct++) {
+				DriveManager::AppendDisk(drive - 'A', isoDisks[ct]);
 			}
 			DriveManager::InitializeDrive(drive - 'A');
 			
@@ -1073,7 +1163,7 @@ public:
 			// Print status message (success)
 			WriteOut(MSG_Get("MSCDEX_SUCCESS"));
 			std::string tmp(paths[0]);
-			for (int i = 1; i < paths.size(); i++) {
+			for (i = 1; i < paths.size(); i++) {
 				tmp += "; " + paths[i];
 			}
 			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"), drive, tmp.c_str());
@@ -1295,6 +1385,7 @@ void DOS_SetupPrograms(void) {
 		);
 	MSG_Add("PROGRAM_BOOT_NOT_EXIST","Bootdisk file does not exist.  Failing.\n");
 	MSG_Add("PROGRAM_BOOT_NOT_OPEN","Cannot open bootdisk file.  Failing.\n");
+	MSG_Add("PROGRAM_BOOT_WRITE_PROTECTED","Image file is read-only! Might create problems.\n");
 	MSG_Add("PROGRAM_BOOT_PRINT_ERROR","This command boots DOSBox from either a floppy or hard disk image.\n\n"
 		"For this command, one can specify a succession of floppy disks swappable\n"
 		"by pressing Ctrl-F4, and -l specifies the mounted drive to boot from.  If\n"
@@ -1321,6 +1412,10 @@ void DOS_SetupPrograms(void) {
 		"For \033[33mhardrive\033[0m images: Must specify drive geometry for hard drives:\n"
 		"bytes_per_sector, sectors_per_cylinder, heads_per_cylinder, cylinder_count.\n"
 		"\033[34;1mIMGMOUNT drive-letter location-of-image -size bps,spc,hpc,cyl\033[0m\n");
+	MSG_Add("PROGRAM_IMGMOUNT_INVALID_IMAGE","Could not load image file.\n"
+		"Check that the path is correct and the image is accessible.\n");
+	MSG_Add("PROGRAM_IMGMOUNT_INVALID_GEOMETRY","Could not extract drive geometry from image.\n"
+		"Use parameter -size bps,spc,hpc,cyl to specify the geometry.\n");
 	MSG_Add("PROGRAM_IMGMOUNT_TYPE_UNSUPPORTED","Type \"%s\" is unsupported. Specify \"hdd\" or \"floppy\" or\"iso\".\n");
 	MSG_Add("PROGRAM_IMGMOUNT_FORMAT_UNSUPPORTED","Format \"%s\" is unsupported. Specify \"fat\" or \"iso\" or \"none\".\n");
 	MSG_Add("PROGRAM_IMGMOUNT_SPECIFY_FILE","Must specify file-image to mount.\n");

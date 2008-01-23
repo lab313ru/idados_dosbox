@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_fat.cpp,v 1.20 2007-01-08 19:45:39 qbix79 Exp $ */
+/* $Id: drive_fat.cpp,v 1.22 2007-06-14 08:23:46 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -399,8 +399,8 @@ bool fatDrive::getEntryName(char *fullname, char *entname) {
 	return true;
 }
 
-bool fatDrive::getFileDirEntry(char * filename, direntry * useEntry, Bit32u * dirClust, Bit32u * subEntry) {
-	Bit32u len = (Bit32u)strlen(filename);
+bool fatDrive::getFileDirEntry(char const * const filename, direntry * useEntry, Bit32u * dirClust, Bit32u * subEntry) {
+	size_t len = strlen(filename);
 	char dirtoken[DOS_PATHLENGTH];
 	Bit32u currentClust = 0;
 
@@ -408,6 +408,7 @@ bool fatDrive::getFileDirEntry(char * filename, direntry * useEntry, Bit32u * di
 	char * findDir;
 	char * findFile;
 	strcpy(dirtoken,filename);
+	findFile=dirtoken;
 
 	/* Skip if testing in root directory */
 	if ((len>0) && (filename[len-1]!='\\')) {
@@ -794,7 +795,7 @@ bool fatDrive::FileCreate(DOS_File **file, char *name, Bit16u attributes) {
 bool fatDrive::FileExists(const char *name) {
 	direntry fileEntry;
 	Bit32u dummy1, dummy2;
-	if(!getFileDirEntry((char *)name, &fileEntry, &dummy1, &dummy2)) return false;
+	if(!getFileDirEntry(name, &fileEntry, &dummy1, &dummy2)) return false;
 	return true;
 }
 

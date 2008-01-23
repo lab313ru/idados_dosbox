@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_tables.cpp,v 1.26 2007-01-08 20:36:53 qbix79 Exp $ */
+/* $Id: dos_tables.cpp,v 1.29 2007-07-20 18:53:52 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -40,10 +40,10 @@ RealPt DOS_TableLowCase;
 
 static Bitu call_casemap;
 
-static Bit16u dos_memseg;
+static Bit16u dos_memseg=DOS_PRIVATE_SEGMENT;
 
 Bit16u DOS_GetMemory(Bit16u pages) {
-	if (pages+dos_memseg>=0xd000) {
+	if (pages+dos_memseg>=DOS_PRIVATE_SEGMENT_END) {
 		E_Exit("DOS:Not enough memory for internal tables");
 	}
 	Bit16u page=dos_memseg;
@@ -73,8 +73,7 @@ static Bit8u country_info[0x22] = {
 };
 
 void DOS_SetupTables(void) {
-	dos_memseg=0xc800;
-	Bit16u seg,seg2;Bitu i;
+	Bit16u seg;Bitu i;
 	dos.tables.mediaid=RealMake(DOS_GetMemory(4),0);
 	dos.tables.tempdta=RealMake(DOS_GetMemory(4),0);
 	dos.tables.tempdta_fcbdelete=RealMake(DOS_GetMemory(4),0);
@@ -145,6 +144,10 @@ void DOS_SetupTables(void) {
 	real_writed(seg,0,0xffffffff);		//Last File Table
 	real_writew(seg,4,100);				//File Table supports 100 files
 	dos_infoblock.SetFCBTable(RealMake(seg,0));
+
+	/* Create a fake DPB */
+	dos.tables.dpb=DOS_GetMemory(2);
+	for(Bitu d=0;d<26;d++) real_writeb(dos.tables.dpb,d,d);
 
 	/* Create a fake disk buffer head */
 	seg=DOS_GetMemory(6);
