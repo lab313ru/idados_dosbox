@@ -99,7 +99,6 @@ enum event_id_t
   ...
 */
 };
-/*
 enum register_x86_t
 {
   // FPU registers
@@ -143,8 +142,8 @@ enum register_x86_t
 #endif
   R_EFLAGS,
 };
-*/
 
+#if 0
   // FPU registers
 #define   R_ST0 0
 #define  R_ST1  1
@@ -175,7 +174,8 @@ enum register_x86_t
 #define  R_ESP 24
 #define  R_EIP 25
 #define  R_EFLAGS 26
-  
+#endif  
+
 typedef int process_id_t;
 typedef int thread_id_t;
 typedef ulong ea_t;       // effective address
