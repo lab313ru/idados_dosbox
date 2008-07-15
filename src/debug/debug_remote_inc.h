@@ -46,9 +46,10 @@ struct  RemoteDebug {
     //ida pro stuff
     bool has_pending_event;
     bool poll_debug_events;
-    vector<debug_event_t> events;
+    list<debug_event_t> events;
     bool sent_event;
     Bits ret; //FIXME !!! ERIC this is evil
+    int last_command_received;
     memory_info_t *miv;
 } r_debug;
 
@@ -425,88 +426,24 @@ int irs_ready()
          seconds != -1 ? &tv : NULL);
 }
 
-/*
-//--------------------------------------------------------------------------
-int remote_get_debug_event(debug_event_t *event, bool ida_is_idle)
-{
-
-  if ( has_pending_event )
-  {
-    verbev(("get_debug_event => has pending event, returning it\n"));
-    *event = pending_event;
-    has_pending_event = false;
-    poll_debug_events = false;
-    return 1;
-  }
-
-  int result = false;
-  if ( poll_debug_events )
-  {
-    // do we have something waiting?
-    // we must use TIMEOUT here to avoid competition between
-    // IDA analyzer and the debugger program.
-    // The analysis will be slow during the application run.
-    // As soon as the program is suspended, the analysis will be fast
-    // because get_debug_event() will not be called.
-    if ( irs_ready(irs) != 0 )
-    {
-      verbev(("get_debug_event => remote has an event for us\n"));
-      // get the packet - it should be RPC_EVENT (nothing else can be)
-      string empty;
-      rpc_packet_t *rp = process_request(empty, ida_is_idle);
-      verbev(("get_debug_event => processed remote event, has=%d\n", has_pending_event));
-      if ( rp != NULL || !has_pending_event )
-        error("rpc: event protocol error");
-    }
-  }
-  else
-  {
-    verbev(("get_debug_event => first time, send GET_DEBUG_EVENT\n"));
-    string cmd = prepare_rpc_packet(RPC_GET_DEBUG_EVENT);
-    append_long(cmd, ida_is_idle);
-
-    rpc_packet_t *rp = process_request(cmd);
-    if ( rp == NULL ) return -1;
-    const uchar *answer = (uchar *)(rp+1);
-    const uchar *end = answer + rp->length;
-
-    result = extract_long(&answer, end);
-    if ( result == 1 )
-      extract_debug_event(&answer, end, event);
-    else
-      poll_debug_events = true;
-    verbev(("get_debug_event => remote said %d, poll=%d now\n", result, poll_debug_events));
-    qfree(rp);
-  }  
-  return result;
-}
-*/
 
 //--------------------------------------------------------------------------
 static int poll_events(bool idling)
 {
   int code = 0;
   debug_event_t ev;
-
-    if ( !r_debug.events.empty() && r_debug.sent_event == false )
+  if ( !r_debug.has_pending_event )
+  {
+    r_debug.has_pending_event = remote_get_debug_event(&ev, idling);
+    if ( r_debug.has_pending_event )
     {
-      
-      for(int i=0;i < r_debug.events.size();i++)
-      {
-        ev = r_debug.events[i];
-        if(ev.handled == false)
-        {
-          r_debug.sent_event = true;
-          ev.handled = true;
-          r_debug.events[i] = ev;
-          
-          printf("OUT <- %s\n",get_event_id_name(ev.eid));
-          string cmd = prepare_rpc_packet(RPC_EVENT);
-          append_debug_event(cmd, &ev);
-          code = send_request(cmd);
-        }
-      }
+      r_debug.poll_debug_events = false;
+      verb(("got event, sending it, poll will be 0 now\n"));
+      string cmd = prepare_rpc_packet(RPC_EVENT);
+      append_debug_event(cmd, &ev);
+      code = send_request(cmd);
     }
+  }
 
   return code;
 }
@@ -523,17 +460,17 @@ static int recv_all(void *ptr, int left, bool idling, bool poll)
       break;
     // since we have to poll the debugged program from the same thread as ours,
     // we poll it here when waiting for the client to send commands
-/*
-    if ( poll && irs_ready() == 0 )
+
+    if ( poll && DEBUG_RemoteDataReady() == false)
     {
       code = poll_events(idling);
       if ( code != 0 )
         break;
-      continue;
+      //FIXME need to check this //continue;
     }
-*/
+
     
-    poll_events(false); //ERIC
+//    poll_events(false); //ERIC
     
     code = recv(r_debug.socket, (char *)ptr, left, 0);
     if(code == 0)
@@ -630,6 +567,9 @@ static rpc_packet_t *process_request(string &cmd, bool ida_is_idle=false)
     rpc_packet_t *rp = recv_request(ida_is_idle);
     if ( rp == NULL )
       return NULL;
+
+    printf("IN:  %s - %x\n",get_rpc_name(rp->code), GetAddress(SegValue(cs), (ulong)reg_eip));
+
     switch ( rp->code )
     {
       case RPC_UNK:
@@ -737,37 +677,17 @@ static string perform_request(const rpc_packet_t *rp)
       {
         bool ida_is_idle = extract_long(&ptr, end);
         static debug_event_t ev;
-        int result = 1;
-/*        
-        if(r_debug.has_pending_event)
-        {
-          r_debug.has_pending_event = false;
-          result = RPC_EVENT;
-        }
-        else
-          r_debug.event.eid = NO_EVENT;
-*/
-        //? 0 : 1; // remote_get_debug_event(&ev, ida_is_idle);
-        extract_debug_event(&ptr, end, &ev);
-        
-        //DEBUG printf("ida event eid = %s\n", get_event_id_name(ev.eid));
-
-        if(r_debug.sent_event == true)
-          result = 0;
-
+        int result = r_debug.has_pending_event ? 0 : remote_get_debug_event(&ev, ida_is_idle);
         append_long(cmd, result);
-/*        
-        if ( result == RPC_EVENT )
+        if ( result == 1 )
         {
-          append_debug_event(cmd, &r_debug.event);
-//          verb(("got event: %s\n", debug_event_str(&ev)));
+          append_debug_event(cmd, &ev);
+          verb(("got event: %s\n", get_event_id_name(ev.eid)));
         }
-*/
-  //      else if ( !has_pending_event )
-  //        poll_debug_events = true;
-
+        else if ( !r_debug.has_pending_event )
+          r_debug.poll_debug_events = true;
 //        verb(("get_debug_event(ida_is_idle=%d) => %d (has_pending=%d, poll=%d)\n", ida_is_idle, result, has_pending_event, poll_debug_events));
-//        verbev(("get_debug_event(ida_is_idle=%d) => %d (has_pending=%d, poll=%d)\n", ida_is_idle, result, has_pending_event, poll_debug_events));
+        verb(("get_debug_event(ida_is_idle=%d) => %d (has_pending=%d, poll=%d)\n", ida_is_idle, result, r_debug.has_pending_event, r_debug.poll_debug_events));
       }
       break;
 /*
@@ -797,7 +717,6 @@ static string perform_request(const rpc_packet_t *rp)
         ev.eid = PROCESS_EXIT;
         ev.exit_code = 0;
         remote_queue_event(ev);
-        r_debug.has_pending_event = true;
         
         append_long(cmd, result);
       }
@@ -807,64 +726,15 @@ static string perform_request(const rpc_packet_t *rp)
       {
         bool result = 1;
         debug_event_t ev;
-        debug_event_t sent_ev;
         extract_debug_event(&ptr, end, &ev);
 
-        if(r_debug.events.empty() == false)
-        {
-          
-          sent_ev = r_debug.events.front();
-          
-          //skip breakpoints
-          while(sent_ev.eid == BREAKPOINT && sent_ev.handled)
-          {
-            if(r_debug.events.size() == 1)
-            {
-              r_debug.events.pop_back();
-              break;
-            }
-            else
-            {
-              for(int i = 1;i < r_debug.events.size();i++)
-                r_debug.events[i-1] = r_debug.events[i];
-              
-              r_debug.events.pop_back();
-              
-              sent_ev = r_debug.events.front();
-            }
-
-          }
-          
-          if(sent_ev.handled && r_debug.events.empty() == false)
-          {
-            if(r_debug.events.size() == 1)
-              r_debug.events.pop_back();
-            else
-            {
-              for(int i = 1;i < r_debug.events.size();i++)
-                r_debug.events[i-1] = r_debug.events[i];
-
-              r_debug.events.pop_back();
-            }
-          
-            switch(sent_ev.eid)
-            {
-              case PROCESS_START : result = DEBUG_Continue(); break;
-              case STEP : result = 1; r_debug.ret = DEBUG_RemoteStep(); break;
-              case BREAKPOINT : result = 1; break;
-                //case NO_EVENT : result = 1; DEBUG_Continue(); break;
-              case PROCESS_EXIT : result = 1; break; //DEBUG_ContinueWithoutDebug(); break;
-              default : result = 1; break;
-            }
-          }
-          else
-            DEBUG_Continue();
-        }
-        else
-          DEBUG_Continue();
-        
         //DEBUG verb(("continue_after_event(...) => %d eid = %s handled = %d\n", result, get_event_id_name(ev.eid), ev.handled));
+        printf("Continue after event %s\n", get_event_id_name(ev.eid));
         append_long(cmd, result);
+        
+        if(r_debug.last_command_received != RPC_TH_SET_STEP)
+          DEBUG_Continue();
+
       }
       break;
 /*
@@ -896,10 +766,10 @@ static string perform_request(const rpc_packet_t *rp)
         thread_id_t tid = extract_long(&ptr, end);
        // r_debug.ret = DEBUG_RemoteStep();
         bool result = 1; //remote_thread_set_step(tid);
-        
+       
+        DEBUG_RemoteStep(); 
         ev.eid = STEP;
         remote_queue_event(ev);
-        r_debug.has_pending_event = true;
         
         verb(("thread_set_step(tid=%08X) => %d\n", tid, result));
         append_long(cmd, result);
@@ -1157,7 +1027,7 @@ static string perform_request(const rpc_packet_t *rp)
       break;
 */
     case RPC_EVOK:
-      //has_pending_event = false;
+      r_debug.has_pending_event = false;
       cmd = "";
       //verbev(("got evok, clearing has_pending_event\n"));
       printf("Got response to event! Yay!\n");
@@ -1170,6 +1040,7 @@ static string perform_request(const rpc_packet_t *rp)
     nomem:
       return prepare_rpc_packet(RPC_MEM);
   }
+  r_debug.last_command_received = rp->code;
   return cmd;
 }
 
@@ -1383,7 +1254,6 @@ void DEBUG_RemoteBreakpoint(PhysPt addr)
    ev.ea = addr;
    printf("Hit Breakpoint address: %x\n", addr);
    remote_queue_event(ev);
-   r_debug.has_pending_event = true;
   }
 }
  
@@ -1472,7 +1342,9 @@ void remote_queue_event(debug_event_t ev)
 {
   ev.pid = 1;
   ev.tid = 1;
-  ev.handled = false;
+  ev.handled = true;
+  ev.ea = GetAddress(SegValue(cs), (ulong)reg_eip);
+
   //r_debug.event.ea = GetAddress(SegValue(cs), (ulong)reg_eip);
   //r_debug.event.ea--;
 
@@ -1480,6 +1352,18 @@ void remote_queue_event(debug_event_t ev)
   
   return;
 }
+
+int remote_get_debug_event(debug_event_t *ev, int idling)
+{
+  if(r_debug.events.empty())
+    return 0;
+
+  *ev = r_debug.events.front();
+  r_debug.events.pop_front();
+
+  return 1; 
+}
+
 
 int remote_start_process(void)
 {
@@ -1506,7 +1390,6 @@ int remote_start_process(void)
   
   printf("remote name = %s, base = %08x, size = %08x, rebase_to = %08x BADADDR = %08x\n", ev.modinfo.name, ev.modinfo.base, ev.modinfo.size, ev.modinfo.rebase_to, BADADDR);
   remote_queue_event(ev);
-  r_debug.has_pending_event = true;
 
   return RPC_OK;
 }

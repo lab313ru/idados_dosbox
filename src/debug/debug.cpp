@@ -1679,6 +1679,7 @@ Bitu DEBUG_Loop(void) {
 
   if (ret<0) return ret;
 		if (ret>0){
+  printf("CS:IP = %x\n", GetAddress(SegValue(cs), (ulong)reg_eip));
 			ret=(*CallBack_Handlers[ret])();
 			if (ret) {
 				exitLoop=true;

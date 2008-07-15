@@ -300,6 +300,7 @@ const char *get_rpc_name(int code);
 const char *get_event_id_name(event_id_t code);
 
 void remote_queue_event(debug_event_t ev);
+int remote_get_debug_event(debug_event_t *ev, int idling);
 
 int remote_init(bool debug_debugger);
 int remote_start_process(void);
