@@ -111,6 +111,10 @@ bool DOS_Terminate(bool tsr) {
 	
 	Bit16u mempsp = dos.psp();
 
+#ifdef C_DEBUG
+	DEBUG_AppTerminated();
+#endif
+
 	DOS_PSP curpsp(mempsp);
 	if (mempsp==curpsp.GetParent()) return true;
 	/* Free Files owned by process */
@@ -158,6 +162,8 @@ bool DOS_Terminate(bool tsr) {
 		CPU_Cycles=0;
 	}
 #endif
+
+
 
 	return true;
 }

@@ -31,13 +31,13 @@ using std::vector;
 //ERIC
 struct  RemoteDebug {
 #ifdef WIN32
-	 SOCKET listen_socket;
-	 SOCKET socket;
+    SOCKET listen_socket;
+    SOCKET socket;
 #else
     int listen_socket;
     int socket;
 #endif
-	 sockaddr sa;
+    sockaddr sa;
     char *password;
     bool connected;
     
@@ -51,6 +51,9 @@ struct  RemoteDebug {
     Bits ret; //FIXME !!! ERIC this is evil
     int last_command_received;
     memory_info_t *miv;
+    bool terminate;
+    bool app_running;
+    bool app_continue;
 } r_debug;
 
 
@@ -80,9 +83,22 @@ static void append_long(string &s, ulong x)
 }
 
 //--------------------------------------------------------------------------
+inline ushort extract_short(const uchar **ptr, const uchar *end)
+{
+  return unpack_dw(ptr, end);
+}
+
+
+//--------------------------------------------------------------------------
 inline ulong extract_long(const uchar **ptr, const uchar *end)
 {
   return unpack_dd(ptr, end);
+}
+
+//--------------------------------------------------------------------------
+inline ulonglong extract_longlong(const uchar **ptr, const uchar *end)
+{
+  return unpack_dq(ptr, end);
 }
 
 //--------------------------------------------------------------------------
@@ -298,10 +314,44 @@ static void extract_exception_info(const uchar **ptr,
 static void extract_regvals(const uchar **ptr, const uchar *end, regval_t *values, int n)
 {
   size_t size = sizeof(regval_t) * n;
+ 
+  regval_t *val_ptr;
+  
+  val_ptr = values;
+  const uchar *tmp_ptr;
+  int len;
+
+  tmp_ptr = *ptr;
+  len = end - tmp_ptr;
+
+ for(int j=0; j < len; j++)
+   printf("%x,", tmp_ptr[j]);
+ printf(":size=%d\n",size);
+
+ for(int i=0; i < n; i++)
+ {
+
+
+  val_ptr->ival = (ulonglong)extract_long(ptr, end);
+  printf("ival = %08x\n", val_ptr->ival);
+
+   for(int j=0; j < 6; j++)
+     val_ptr->fval[j] = extract_short(ptr, end);
+
+
+   //append_long(s, 10);
+   //append_long(s, 0);
+   
+
+   val_ptr++;
+ }
+/*
+
   memcpy(values, *ptr, size);
   *ptr += size;
   if ( *ptr > end )
     *ptr = end;
+*/
 }
 
 
@@ -349,7 +399,7 @@ inline void append_regvals(string &s, const regval_t *values, int n)
  
  for(int i=0; i < n; i++)
  {
-   append_longlong(s, reg_ptr->ival);
+   append_long(s, reg_ptr->ival);
    //append_long(s, 10);
    //append_long(s, 0);
    
@@ -438,7 +488,7 @@ static int poll_events(bool idling)
     if ( r_debug.has_pending_event )
     {
       r_debug.poll_debug_events = false;
-      verb(("got event, sending it, poll will be 0 now\n"));
+      printf("got event (%s), sending it, poll will be 0 now\n", get_event_id_name(ev.eid));
       string cmd = prepare_rpc_packet(RPC_EVENT);
       append_debug_event(cmd, &ev);
       code = send_request(cmd);
@@ -452,7 +502,15 @@ static int recv_all(void *ptr, int left, bool idling, bool poll)
 {
   int code;
   int i;
-  
+ 
+    if ( poll ) // && DEBUG_RemoteDataReady() == false)
+    {
+      code = poll_events(idling);
+      if ( code != 0 )
+        return code;
+      //FIXME need to check this //continue;
+    }
+ 
   while ( true )
   {
     code = 0;
@@ -461,6 +519,7 @@ static int recv_all(void *ptr, int left, bool idling, bool poll)
     // since we have to poll the debugged program from the same thread as ours,
     // we poll it here when waiting for the client to send commands
 
+/*
     if ( poll && DEBUG_RemoteDataReady() == false)
     {
       code = poll_events(idling);
@@ -468,7 +527,7 @@ static int recv_all(void *ptr, int left, bool idling, bool poll)
         break;
       //FIXME need to check this //continue;
     }
-
+*/
     
 //    poll_events(false); //ERIC
     
@@ -514,13 +573,18 @@ rpc_packet_t *recv_request(bool idling)
     return NULL;
 
   if(!idling && DEBUG_RemoteDataReady() == false)
-    return NULL;
-
+  {
+   if(remote_has_event_to_send())
+    poll_events(idling);
+   return NULL;
+  }
+  
   for(;!DEBUG_RemoteDataReady();) //loop until we have data. evil I know. :(
    sleep(1);
 
+
   rpc_packet_t p;
-  int code = recv_all(&p, sizeof(rpc_packet_t), idling, r_debug.poll_debug_events);
+  int code = recv_all(&p, sizeof(rpc_packet_t), idling, true);//r_debug.poll_debug_events);
   if ( code != 0 )
     return NULL;
 
@@ -705,6 +769,9 @@ static string perform_request(const rpc_packet_t *rp)
       {
         bool result = 1; //remote_prepare_to_pause_process();
         verb(("prepare_to_pause_process() => %d\n", result));
+        r_debug.app_continue = false;
+        //ev.eid = BREAKPOINT; //FIXME what should we send to the client
+        //remote_queue_event(ev); //empty event with current address.
         append_long(cmd, result);
       }
       break;
@@ -714,17 +781,19 @@ static string perform_request(const rpc_packet_t *rp)
         bool result = 1;//remote_exit_process();
         verb(("exit_process() => %d\n", result));
 
-        ev.eid = PROCESS_EXIT;
-        ev.exit_code = 0;
-        remote_queue_event(ev);
-        
+        //ev.eid = PROCESS_EXIT;
+        //ev.exit_code = 0;
+        //remote_queue_event(ev);
+        //r_debug.terminate = true;
+        remote_process_terminated();
+
         append_long(cmd, result);
       }
       break;
 
     case RPC_CONTINUE_AFTER_EVENT:
       {
-        bool result = 1;
+        int result = r_debug.app_running ? 1 : 0;
         debug_event_t ev;
         extract_debug_event(&ptr, end, &ev);
 
@@ -732,9 +801,8 @@ static string perform_request(const rpc_packet_t *rp)
         printf("Continue after event %s\n", get_event_id_name(ev.eid));
         append_long(cmd, result);
         
-        if(r_debug.last_command_received != RPC_TH_SET_STEP)
-          DEBUG_Continue();
-
+        if(result && r_debug.last_command_received != RPC_TH_SET_STEP)
+          r_debug.app_continue = true;
       }
       break;
 /*
@@ -767,10 +835,10 @@ static string perform_request(const rpc_packet_t *rp)
        // r_debug.ret = DEBUG_RemoteStep();
         bool result = 1; //remote_thread_set_step(tid);
        
-        DEBUG_RemoteStep(); 
+        r_debug.ret = DEBUG_RemoteStep(); 
         ev.eid = STEP;
         remote_queue_event(ev);
-        
+
         verb(("thread_set_step(tid=%08X) => %d\n", tid, result));
         append_long(cmd, result);
       }
@@ -796,7 +864,7 @@ static string perform_request(const rpc_packet_t *rp)
         int reg_idx = extract_long(&ptr, end);
         regval_t value;
         extract_regvals(&ptr, end, &value, 1);
-        bool result = 1; //FIXME!!! remote_thread_write_register(tid, reg_idx, &value);
+        bool result = remote_thread_write_register(tid, reg_idx, &value);
         verb(("thread_write_reg(tid=%08X) => %d\n", tid, result));
         append_long(cmd, result);
       }
@@ -860,7 +928,7 @@ static string perform_request(const rpc_packet_t *rp)
         delete[] buf;
       }
       break;
-/*
+
     case RPC_WRITE_MEMORY:
       {
         ea_t ea = extract_ea(&ptr, end);
@@ -878,7 +946,7 @@ static string perform_request(const rpc_packet_t *rp)
         delete buf;
       }
       break;
-
+/*
     case RPC_ISOK_BPT:
       {
         bpttype_t type = extract_long(&ptr, end);
@@ -1095,6 +1163,7 @@ static void DEBUG_RemoteInit(void)
     r_debug.poll_debug_events = false;
     r_debug.sent_event = false;
     r_debug.miv = NULL;
+
 }
 
 static void  DEBUG_RemoteCloseConnection(void)
@@ -1144,6 +1213,17 @@ Bits DEBUG_RemoteHandleCMD()
     r_debug.ret = 0;
     process_request(cmd, false);
     
+    if(r_debug.terminate == true)
+    {
+      DOS_Terminate(false);
+      r_debug.terminate = false;
+    }
+    else
+    {
+      if(r_debug.app_continue)
+        DEBUG_Continue();
+    }
+
     return r_debug.ret;
 }
 
@@ -1153,16 +1233,16 @@ bool DEBUG_RemoteNewConnection()
     sockaddr_in sa;
     int s;
 #ifdef WIN32
-	 int salen = sizeof(sa);
+    int salen = sizeof(sa);
 #else
     socklen_t salen = sizeof(sa);
 #endif
-	 s = accept(r_debug.listen_socket, (sockaddr *)&sa, &salen);
+    s = accept(r_debug.listen_socket, (sockaddr *)&sa, &salen);
     
     if(s == -1)
-	 {
+    {
       return false;
-	 }
+    }
 
     r_debug.connected = true;
     r_debug.socket = s;
@@ -1254,6 +1334,7 @@ void DEBUG_RemoteBreakpoint(PhysPt addr)
    ev.ea = addr;
    printf("Hit Breakpoint address: %x\n", addr);
    remote_queue_event(ev);
+   r_debug.app_continue = false;
   }
 }
  
@@ -1330,6 +1411,32 @@ const char *get_event_id_name(event_id_t code)
  return "?";
 }
 
+const char *get_reg_name(int reg_idx)
+{
+	switch(reg_idx)
+	{
+		case R_EAX : return "AX";
+		case R_EBX : return "BX";
+		case R_ECX : return "CX";
+		case R_EDX : return "DX";
+		case R_ESI : return "SI";
+		case R_EDI : return "DI";
+		case R_EBP : return "BP";
+		case R_ESP : return "SP";
+		case R_EIP : return "EIP";
+		case R_EFLAGS : return "FLAGS";
+
+		case R_CS : return "CS";
+		case R_DS : return "DS";
+		case R_ES : return "ES";
+		case R_FS : return "FS";
+		case R_GS : return "GS";
+		case R_SS : return "SS";
+	}
+	
+	return "??";
+}
+
 int remote_init(bool debug_debugger)
 {
   r_debug.base = GetAddress(SegValue(cs),0); // reg_eip);
@@ -1355,6 +1462,7 @@ void remote_queue_event(debug_event_t ev)
 
 int remote_get_debug_event(debug_event_t *ev, int idling)
 {
+  printf("remote_get_debug_event()\n");
   if(r_debug.events.empty())
     return 0;
 
@@ -1364,14 +1472,19 @@ int remote_get_debug_event(debug_event_t *ev, int idling)
   return 1; 
 }
 
+int remote_has_event_to_send()
+{
+  if(r_debug.events.empty() || r_debug.has_pending_event)
+    return 0;
+
+  return 1;
+}
 
 int remote_start_process(void)
 {
   debug_event_t ev;
-  string filename = "";
-  
 
-  filename = DEBUG_GetFileName();
+  string filename = DEBUG_GetFileName();
   
   ev.eid = PROCESS_START;
   ev.ea = BADADDR; // r_debug.base; //GetAddress(0xf7,0); NOTE this gets overwritten at the moment.
@@ -1391,6 +1504,9 @@ int remote_start_process(void)
   printf("remote name = %s, base = %08x, size = %08x, rebase_to = %08x BADADDR = %08x\n", ev.modinfo.name, ev.modinfo.base, ev.modinfo.size, ev.modinfo.rebase_to, BADADDR);
   remote_queue_event(ev);
 
+  r_debug.terminate = false;
+  r_debug.app_running = true;
+
   return RPC_OK;
 }
 
@@ -1398,7 +1514,10 @@ int remote_get_memory_info(memory_info_t **areas, int *qty)
 {
  memory_info_t *miv;
  
- *qty = 4;
+  if(!r_debug.app_running)
+    return 0;
+
+ *qty = 5;
  
  //return 1;
  if(r_debug.miv == NULL)
@@ -1436,6 +1555,14 @@ int remote_get_memory_info(memory_info_t **areas, int *qty)
    strcpy(miv->name, ".stack");
    miv->sclass[0] = '\0';
    miv->perm = 0 | SEGPERM_READ | SEGPERM_WRITE;
+   miv++;
+
+   miv->startEA = (ea_t)GetAddress(0xf100,0); 
+   miv->endEA = (ea_t)GetAddress(0xf100, 0x1000); 
+   miv->endEA--;
+   strcpy(miv->name, ".callbacks");
+   miv->sclass[0] = '\0';
+   miv->perm = 0 | SEGPERM_READ | SEGPERM_WRITE | SEGPERM_EXEC;
    miv++;
  }
  
@@ -1481,7 +1608,7 @@ bool remote_thread_read_registers(thread_id_t tid, regval_t *values, int nregs)
   values[R_EAX   ].ival = (ulong)reg_eax;
   values[R_EBX   ].ival = (ulong)reg_ebx;
   values[R_ECX   ].ival = (ulong)reg_ecx;
-  values[R_EDX   ].ival = GetAddress(SegValue(ds), (ulong)reg_edx);//(ulong)reg_edx;
+  values[R_EDX   ].ival = (ulong)reg_edx;//GetAddress(SegValue(ds), (ulong)reg_edx);//(ulong)reg_edx;
   values[R_ESI   ].ival = (ulong)reg_esi;
   values[R_EDI   ].ival = (ulong)reg_edi;
   values[R_EBP   ].ival = (ulong)reg_ebp;
@@ -1531,9 +1658,56 @@ bool remote_thread_read_registers(thread_id_t tid, regval_t *values, int nregs)
  return true;
 }
 
+int remote_thread_write_register(thread_id_t tid, int reg_idx, const regval_t *value)
+{
+	if(!r_debug.app_running)
+		return 0;
+	printf("Write register %s : value = %08x\n", get_reg_name(reg_idx), value->ival);
+
+	switch(reg_idx)
+	{
+		case R_EAX : reg_eax = value->ival; break;
+		
+		case R_EBX : reg_ebx = value->ival; break;
+		case R_ECX : reg_ecx = value->ival; break;
+		case R_EDX : reg_edx = value->ival; break;
+		case R_ESI : reg_esi = value->ival; break;
+		case R_EDI : reg_edi = value->ival; break;
+		case R_EBP : reg_ebp = value->ival; break;
+		case R_ESP : reg_esp = value->ival; break;
+		//case R_EIP : reg_eip = value->ival; break; //FIXME allow IP update.
+		case R_EFLAGS : reg_flags = value->ival; break;
+
+		case R_CS : SegSet16(cs, value->ival); break;
+		case R_DS : SegSet16(ds, value->ival); break;
+		case R_ES : SegSet16(es, value->ival); break;
+		case R_FS : SegSet16(fs, value->ival); break;
+		case R_GS : SegSet16(gs, value->ival); break;
+		case R_SS : SegSet16(ss, value->ival); break;
+
+		default : break;
+	}
+
+	return 1;
+}
+
+ssize_t remote_write_memory(ea_t ea, uchar *buffer, size_t size)
+{
+	int i;
+	if(!r_debug.app_running)
+		return 0;
+	
+	for(i=0;i<size;i++)
+		mem_writeb(ea + i, (Bit8u)buffer[i]);
+
+	return 1;
+}
 
 bool remote_add_bpt(bpttype_t type, ea_t ea, int len)
 {
+ if(!r_debug.app_running)
+   return 0;
+
  printf("new breakpoint at base, offset %x, %x.\n", r_debug.base, ea);
  
  //ea += r_debug.base;
@@ -1545,5 +1719,24 @@ bool remote_add_bpt(bpttype_t type, ea_t ea, int len)
  }
  
  return 1;
+}
+
+void remote_process_terminated()
+{
+  debug_event_t ev;
+
+  if(!r_debug.connected || !r_debug.app_running)
+   return;
+  
+  r_debug.app_running = false;
+  r_debug.app_continue = false;
+
+  ev.eid = PROCESS_EXIT;
+  ev.ea = BADADDR;
+
+  remote_queue_event(ev);
+
+  printf("Terminate Get here\n");
+  return;
 }
 

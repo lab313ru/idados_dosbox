@@ -298,13 +298,18 @@ void DEBUG_RemoteBreakpoint(PhysPt addr);
 
 const char *get_rpc_name(int code);
 const char *get_event_id_name(event_id_t code);
+const char *get_reg_name(int reg_idx);
 
 void remote_queue_event(debug_event_t ev);
 int remote_get_debug_event(debug_event_t *ev, int idling);
+int remote_has_event_to_send();
 
 int remote_init(bool debug_debugger);
 int remote_start_process(void);
 int remote_get_memory_info(memory_info_t **areas, int *qty);
 ssize_t remote_read_memory(ea_t ea, uchar *buf, size_t size);
 bool remote_thread_read_registers(thread_id_t tid, regval_t *values, int nregs);
+int remote_thread_write_register(thread_id_t tid, int reg_idx, const regval_t *value);
+ssize_t remote_write_memory(ea_t ea, uchar *buffer, size_t size);
 bool remote_add_bpt(bpttype_t type, ea_t ea, int len);
+void remote_process_terminated();

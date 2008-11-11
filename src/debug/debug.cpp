@@ -105,7 +105,7 @@ class DEBUG;
 
 DEBUG*	pDebugcom	= 0;
 bool	exitLoop	= false;
-
+static string debug_filename;
 
 // Heavy Debugging Vars for logging
 #if C_HEAVY_DEBUG
@@ -1908,6 +1908,7 @@ public:
 		char args[256];
 		cmd->FindCommand(1,temp_line);
 		safe_strncpy(filename,temp_line.c_str(),128);
+		debug_filename = string(filename);
 		// Read commandline
 		Bit16u i	=2;
 		args[0]		= 0;
@@ -2375,6 +2376,8 @@ bool DEBUG_DelBreakPoint(PhysPt address)
 Bits DEBUG_RemoteStep(void)
 {
   Bits ret;
+
+	r_debug.app_continue = false;
   
 	exitLoop = false;
 	skipFirstInstruction = true; // for heavy debugger
@@ -2388,6 +2391,7 @@ Bits DEBUG_RemoteStep(void)
 
 int DEBUG_Continue(void)
 {
+	printf("DEBUG_Continue()\n");
     // Run Programm
     debugging=false;
     CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);						
@@ -2409,12 +2413,12 @@ int DEBUG_ContinueWithoutDebug()
 
 string DEBUG_GetFileName()
 {
-  string filename = "";
-  
-  if(pDebugcom != 0)
-    filename = pDebugcom->GetFileName();
-  
-  return filename;
+  return debug_filename;
+}
+
+void DEBUG_AppTerminated()
+{
+ remote_process_terminated();
 }
 
 #endif // DEBUG
