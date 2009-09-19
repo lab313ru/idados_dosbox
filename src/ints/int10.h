@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: int10.h,v 1.39 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include "vga.h"
 
@@ -121,7 +123,13 @@ typedef struct {
 		RealPt font_8_second;
 		RealPt font_14;
 		RealPt font_16;
+		RealPt font_14_alternate;
+		RealPt font_16_alternate;
 		RealPt static_state;
+		RealPt video_save_pointers;
+		RealPt video_parameter_table;
+		RealPt video_save_pointer_table;
+		RealPt video_dcc_table;
 		RealPt oemstring;
 		RealPt vesa_modes;
 		RealPt pmode_interface;
@@ -131,15 +139,18 @@ typedef struct {
 		Bit16u pmode_interface_palette;
 		Bitu used;
 	} rom;
+	Bitu vesa_setmode;
+	bool vesa_nolfb;
+	bool vesa_oldvbe;
 } Int10Data;
 
 extern Int10Data int10;
 
-INLINE Bit8u CURSOR_POS_COL(Bit8u page) {
+static Bit8u CURSOR_POS_COL(Bit8u page) {
 	return real_readb(BIOSMEM_SEG,BIOSMEM_CURSOR_POS+page*2);
 }
 
-INLINE Bit8u CURSOR_POS_ROW(Bit8u page) {
+static Bit8u CURSOR_POS_ROW(Bit8u page) {
 	return real_readb(BIOSMEM_SEG,BIOSMEM_CURSOR_POS+page*2+1);
 }
 
@@ -199,7 +210,7 @@ Bit8u VESA_GetDisplayStart(Bit16u & x,Bit16u & y);
 Bit8u VESA_SetPalette(PhysPt data,Bitu index,Bitu count);
 Bit8u VESA_GetPalette(PhysPt data,Bitu index,Bitu count);
 
-/* Sup Groups */
+/* Sub Groups */
 void INT10_SetupRomMemory(void);
 void INT10_SetupRomMemoryChecksum(void);
 void INT10_SetupVESA(void);
@@ -208,7 +219,15 @@ void INT10_SetupVESA(void);
 RealPt INT10_EGA_RIL_GetVersionPt(void);
 void INT10_EGA_RIL_ReadRegister(Bit8u & bl, Bit16u dx);
 void INT10_EGA_RIL_WriteRegister(Bit8u & bl, Bit8u bh, Bit16u dx);
-void INT10_EGA_RIL_ReadRegisterRange(Bit8u & bl, Bit8u ch, Bit8u cl, Bit16u dx, PhysPt dst);
-void INT10_EGA_RIL_WriteRegisterRange(Bit8u & bl, Bit8u ch, Bit8u cl, Bit16u dx, PhysPt dst);
+void INT10_EGA_RIL_ReadRegisterRange(Bit8u ch, Bit8u cl, Bit16u dx, PhysPt dst);
+void INT10_EGA_RIL_WriteRegisterRange(Bit8u ch, Bit8u cl, Bit16u dx, PhysPt dst);
 void INT10_EGA_RIL_ReadRegisterSet(Bit16u cx, PhysPt tbl);
 void INT10_EGA_RIL_WriteRegisterSet(Bit16u cx, PhysPt tbl);
+
+/* Video State */
+Bitu INT10_VideoState_GetSize(Bitu state);
+bool INT10_VideoState_Save(Bitu state,RealPt buffer);
+bool INT10_VideoState_Restore(Bitu state,RealPt buffer);
+
+/* Video Parameter Tables */
+Bitu INT10_SetupVideoParameterTable(PhysPt basepos);

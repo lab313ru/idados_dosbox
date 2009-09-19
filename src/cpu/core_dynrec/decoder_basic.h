@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: decoder_basic.h,v 1.15 2009-05-27 09:15:41 qbix79 Exp $ */
+
 
 /*
 	This file provides some definitions and basic level functions
@@ -29,7 +31,7 @@
 // instructions that use one operand
 enum SingleOps {
 	SOP_INC,SOP_DEC,
-	SOP_NOT,SOP_NEG,
+	SOP_NOT,SOP_NEG
 };
 
 // instructions that use two operand
@@ -40,7 +42,7 @@ enum DualOps {
 	DOP_AND,DOP_OR,
 	DOP_TEST,
 	DOP_MOV,
-	DOP_XCHG,
+	DOP_XCHG
 };
 
 // shift and rotate functions
@@ -48,7 +50,7 @@ enum ShiftOps {
 	SHIFT_ROL,SHIFT_ROR,
 	SHIFT_RCL,SHIFT_RCR,
 	SHIFT_SHL,SHIFT_SHR,
-	SHIFT_SAL,SHIFT_SAR,
+	SHIFT_SAL,SHIFT_SAR
 };
 
 // branch conditions
@@ -67,7 +69,7 @@ enum StringOps {
 	STR_LODSB=12,STR_LODSW,STR_LODSD,
 	STR_STOSB=16,STR_STOSW,STR_STOSD,
 	STR_SCASB=20,STR_SCASW,STR_SCASD,
-	STR_CMPSB=24,STR_CMPSW,STR_CMPSD,
+	STR_CMPSB=24,STR_CMPSW,STR_CMPSD
 };
 
 // repeat prefix type (for string operations)
@@ -82,7 +84,7 @@ enum LoopTypes {
 
 // rotate operand type
 enum grp2_types {
-	grp2_1,grp2_imm,grp2_cl,
+	grp2_1,grp2_imm,grp2_cl
 };
 
 // opcode mapping for group1 instructions
@@ -130,21 +132,29 @@ static struct DynDecode {
 static bool MakeCodePage(Bitu lin_addr,CodePageHandlerDynRec * &cph) {
 	Bit8u rdval;
 	//Ensure page contains memory:
-	if (GCC_UNLIKELY(mem_readb_checked_x86(lin_addr,&rdval))) return true;
+	if (GCC_UNLIKELY(mem_readb_checked(lin_addr,&rdval))) return true;
 
-	Bitu lin_page=lin_addr >> 12;
-
-	PageHandler * handler=paging.tlb.handler[lin_page];
+	PageHandler * handler=get_tlb_readhandler(lin_addr);
 	if (handler->flags & PFLAG_HASCODE) {
 		// this is a codepage handler, and the one that we're looking for
 		cph=(CodePageHandlerDynRec *)handler;
 		return false;
 	}
 	if (handler->flags & PFLAG_NOCODE) {
-		LOG_MSG("DYNREC:Can't run code in this page");
-		cph=0;
-		return false;
+		if (PAGING_ForcePageInit(lin_addr)) {
+			handler=get_tlb_readhandler(lin_addr);
+			if (handler->flags & PFLAG_HASCODE) {
+				cph=(CodePageHandlerDynRec *)handler;
+				return false;
+			}
+		}
+		if (handler->flags & PFLAG_NOCODE) {
+			LOG_MSG("DYNREC:Can't run code in this page");
+			cph=0;
+			return false;
+		}
 	} 
+	Bitu lin_page=lin_addr>>12;
 	Bitu phys_page=lin_page;
 	// find the physical page that the linear page is mapped to
 	if (!PAGING_MakePhysPage(phys_page)) {
@@ -280,10 +290,10 @@ static bool decode_fetchb_imm(Bitu & val) {
 	if (GCC_UNLIKELY(decode.page.index>=4096)) {
 		decode_advancepage();
 	}
-	Bitu index=(decode.code>>12);
+	HostPt tlb_addr=get_tlb_read(decode.code);
 	// see if position is directly accessible
-	if (paging.tlb.read[index]) {
-		val=(Bitu)(paging.tlb.read[index]+decode.code);
+	if (tlb_addr) {
+		val=(Bitu)(tlb_addr+decode.code);
 		decode_increase_wmapmask(1);
 		decode.code++;
 		decode.page.index++;
@@ -298,10 +308,10 @@ static bool decode_fetchb_imm(Bitu & val) {
 // otherwise val contains the current value read from the position
 static bool decode_fetchw_imm(Bitu & val) {
 	if (decode.page.index<4095) {
-		Bitu index=(decode.code>>12);
+		HostPt tlb_addr=get_tlb_read(decode.code);
 		// see if position is directly accessible
-		if (paging.tlb.read[index]) {
-			val=(Bitu)(paging.tlb.read[index]+decode.code);
+		if (tlb_addr) {
+			val=(Bitu)(tlb_addr+decode.code);
 			decode_increase_wmapmask(2);
 			decode.code+=2;
 			decode.page.index+=2;
@@ -317,10 +327,10 @@ static bool decode_fetchw_imm(Bitu & val) {
 // otherwise val contains the current value read from the position
 static bool decode_fetchd_imm(Bitu & val) {
 	if (decode.page.index<4093) {
-		Bitu index=(decode.code>>12);
+		HostPt tlb_addr=get_tlb_read(decode.code);
 		// see if position is directly accessible
-		if (paging.tlb.read[index]) {
-			val=(Bitu)(paging.tlb.read[index]+decode.code);
+		if (tlb_addr) {
+			val=(Bitu)(tlb_addr+decode.code);
 			decode_increase_wmapmask(4);
 			decode.code+=4;
 			decode.page.index+=4;
@@ -340,6 +350,89 @@ static void INLINE dyn_get_modrm(void) {
 	decode.modrm.reg=(decode.modrm.val >> 3) & 7;
 	decode.modrm.rm=(decode.modrm.val & 7);
 }
+
+
+#ifdef DRC_USE_SEGS_ADDR
+
+#define MOV_SEG_VAL_TO_HOST_REG(host_reg, seg_index) gen_mov_seg16_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_SEG_VAL(seg_index)) - (DRC_PTR_SIZE_IM)(&Segs))
+
+#define MOV_SEG_PHYS_TO_HOST_REG(host_reg, seg_index) gen_mov_seg32_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_SEG_PHYS(seg_index)) - (DRC_PTR_SIZE_IM)(&Segs))
+#define ADD_SEG_PHYS_TO_HOST_REG(host_reg, seg_index) gen_add_seg32_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_SEG_PHYS(seg_index)) - (DRC_PTR_SIZE_IM)(&Segs))
+
+#else
+
+#define MOV_SEG_VAL_TO_HOST_REG(host_reg, seg_index) gen_mov_word_to_reg(host_reg,DRCD_SEG_VAL(seg_index),false)
+
+#define MOV_SEG_PHYS_TO_HOST_REG(host_reg, seg_index) gen_mov_word_to_reg(host_reg,DRCD_SEG_PHYS(seg_index),true)
+#define ADD_SEG_PHYS_TO_HOST_REG(host_reg, seg_index) gen_add(host_reg,DRCD_SEG_PHYS(seg_index))
+
+#endif
+
+
+#ifdef DRC_USE_REGS_ADDR
+
+#define MOV_REG_VAL_TO_HOST_REG(host_reg, reg_index) gen_mov_regval32_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_VAL(reg_index)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+#define ADD_REG_VAL_TO_HOST_REG(host_reg, reg_index) gen_add_regval32_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_VAL(reg_index)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+
+#define MOV_REG_WORD16_TO_HOST_REG(host_reg, reg_index) gen_mov_regval16_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_WORD(reg_index,false)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+#define MOV_REG_WORD32_TO_HOST_REG(host_reg, reg_index) gen_mov_regval32_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_WORD(reg_index,true)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+#define MOV_REG_WORD_TO_HOST_REG(host_reg, reg_index, dword) gen_mov_regword_to_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_WORD(reg_index,dword)) - (DRC_PTR_SIZE_IM)(&cpu_regs), dword)
+
+#define MOV_REG_WORD16_FROM_HOST_REG(host_reg, reg_index) gen_mov_regval16_from_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_WORD(reg_index,false)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+#define MOV_REG_WORD32_FROM_HOST_REG(host_reg, reg_index) gen_mov_regval32_from_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_WORD(reg_index,true)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+#define MOV_REG_WORD_FROM_HOST_REG(host_reg, reg_index, dword) gen_mov_regword_from_reg(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_WORD(reg_index,dword)) - (DRC_PTR_SIZE_IM)(&cpu_regs), dword)
+
+#define MOV_REG_BYTE_TO_HOST_REG_LOW(host_reg, reg_index, high_byte) gen_mov_regbyte_to_reg_low(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_BYTE(reg_index,high_byte)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+#define MOV_REG_BYTE_TO_HOST_REG_LOW_CANUSEWORD(host_reg, reg_index, high_byte) gen_mov_regbyte_to_reg_low_canuseword(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_BYTE(reg_index,high_byte)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+#define MOV_REG_BYTE_FROM_HOST_REG_LOW(host_reg, reg_index, high_byte) gen_mov_regbyte_from_reg_low(host_reg,(DRC_PTR_SIZE_IM)(DRCD_REG_BYTE(reg_index,high_byte)) - (DRC_PTR_SIZE_IM)(&cpu_regs))
+
+#else
+
+#define MOV_REG_VAL_TO_HOST_REG(host_reg, reg_index) gen_mov_word_to_reg(host_reg,DRCD_REG_VAL(reg_index),true)
+#define ADD_REG_VAL_TO_HOST_REG(host_reg, reg_index) gen_add(host_reg,DRCD_REG_VAL(reg_index))
+
+#define MOV_REG_WORD16_TO_HOST_REG(host_reg, reg_index) gen_mov_word_to_reg(host_reg,DRCD_REG_WORD(reg_index,false),false)
+#define MOV_REG_WORD32_TO_HOST_REG(host_reg, reg_index) gen_mov_word_to_reg(host_reg,DRCD_REG_WORD(reg_index,true),true)
+#define MOV_REG_WORD_TO_HOST_REG(host_reg, reg_index, dword) gen_mov_word_to_reg(host_reg,DRCD_REG_WORD(reg_index,dword),dword)
+
+#define MOV_REG_WORD16_FROM_HOST_REG(host_reg, reg_index) gen_mov_word_from_reg(host_reg,DRCD_REG_WORD(reg_index,false),false)
+#define MOV_REG_WORD32_FROM_HOST_REG(host_reg, reg_index) gen_mov_word_from_reg(host_reg,DRCD_REG_WORD(reg_index,true),true)
+#define MOV_REG_WORD_FROM_HOST_REG(host_reg, reg_index, dword) gen_mov_word_from_reg(host_reg,DRCD_REG_WORD(reg_index,dword),dword)
+
+#define MOV_REG_BYTE_TO_HOST_REG_LOW(host_reg, reg_index, high_byte) gen_mov_byte_to_reg_low(host_reg,DRCD_REG_BYTE(reg_index,high_byte))
+#define MOV_REG_BYTE_TO_HOST_REG_LOW_CANUSEWORD(host_reg, reg_index, high_byte) gen_mov_byte_to_reg_low_canuseword(host_reg,DRCD_REG_BYTE(reg_index,high_byte))
+#define MOV_REG_BYTE_FROM_HOST_REG_LOW(host_reg, reg_index, high_byte) gen_mov_byte_from_reg_low(host_reg,DRCD_REG_BYTE(reg_index,high_byte))
+
+#endif
+
+
+#define DYN_LEA_MEM_MEM(ea_reg, op1, op2, scale, imm) dyn_lea_mem_mem(ea_reg,op1,op2,scale,imm)
+
+#if defined(DRC_USE_REGS_ADDR) && defined(DRC_USE_SEGS_ADDR)
+
+#define DYN_LEA_SEG_PHYS_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_segphys_regval(ea_reg,op1_index,op2_index,scale,imm)
+#define DYN_LEA_REG_VAL_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_regval_regval(ea_reg,op1_index,op2_index,scale,imm)
+#define DYN_LEA_MEM_REG_VAL(ea_reg, op1, op2_index, scale, imm) dyn_lea_mem_regval(ea_reg,op1,op2_index,scale,imm)
+
+#elif defined(DRC_USE_REGS_ADDR)
+
+#define DYN_LEA_SEG_PHYS_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_mem_regval(ea_reg,DRCD_SEG_PHYS(op1_index),op2_index,scale,imm)
+#define DYN_LEA_REG_VAL_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_regval_regval(ea_reg,op1_index,op2_index,scale,imm)
+#define DYN_LEA_MEM_REG_VAL(ea_reg, op1, op2_index, scale, imm) dyn_lea_mem_regval(ea_reg,op1,op2_index,scale,imm)
+
+#elif defined(DRC_USE_SEGS_ADDR)
+
+#define DYN_LEA_SEG_PHYS_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_segphys_mem(ea_reg,op1_index,DRCD_REG_VAL(op2_index),scale,imm)
+#define DYN_LEA_REG_VAL_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_mem_mem(ea_reg,DRCD_REG_VAL(op1_index),DRCD_REG_VAL(op2_index),scale,imm)
+#define DYN_LEA_MEM_REG_VAL(ea_reg, op1, op2_index, scale, imm) dyn_lea_mem_mem(ea_reg,op1,DRCD_REG_VAL(op2_index),scale,imm)
+
+#else
+
+#define DYN_LEA_SEG_PHYS_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_mem_mem(ea_reg,DRCD_SEG_PHYS(op1_index),DRCD_REG_VAL(op2_index),scale,imm)
+#define DYN_LEA_REG_VAL_REG_VAL(ea_reg, op1_index, op2_index, scale, imm) dyn_lea_mem_mem(ea_reg,DRCD_REG_VAL(op1_index),DRCD_REG_VAL(op2_index),scale,imm)
+#define DYN_LEA_MEM_REG_VAL(ea_reg, op1, op2_index, scale, imm) dyn_lea_mem_mem(ea_reg,op1,DRCD_REG_VAL(op2_index),scale,imm)
+
+#endif
 
 
 
@@ -476,7 +569,7 @@ static DRC_PTR_SIZE_IM INLINE gen_call_function_mm(void * func,Bitu op1,Bitu op2
 
 
 
-enum save_info_type {exception, cycle_check, string_break};
+enum save_info_type {db_exception, cycle_check, string_break};
 
 
 // function that is called on exceptions
@@ -520,7 +613,7 @@ static void dyn_fill_blocks(void) {
 	for (Bitu sct=0; sct<used_save_info_dynrec; sct++) {
 		gen_fill_branch_long(save_info_dynrec[sct].branch_pos);
 		switch (save_info_dynrec[sct].type) {
-			case exception:
+			case db_exception:
 				// code for exception handling, load cycles and call DynRunException
 				decode.cycles=save_info_dynrec[sct].cycles;
 				if (cpu.code.big) gen_call_function_II((void *)&DynRunException,save_info_dynrec[sct].eip_change,save_info_dynrec[sct].cycles);
@@ -545,7 +638,9 @@ static void dyn_fill_blocks(void) {
 static void dyn_closeblock(void) {
 	//Shouldn't create empty block normally but let's do it like this
 	dyn_fill_blocks();
+	cache_block_before_close();
 	cache_closeblock();
+	cache_block_closing(decode.block->cache.start,decode.block->cache.size);
 }
 
 
@@ -557,7 +652,7 @@ static void dyn_check_exception(HostReg reg) {
 	// in case of an exception eip will point to the start of the current instruction
 	save_info_dynrec[used_save_info_dynrec].eip_change=decode.op_start-decode.code_start;
 	if (!cpu.code.big) save_info_dynrec[used_save_info_dynrec].eip_change&=0xffff;
-	save_info_dynrec[used_save_info_dynrec].type=exception;
+	save_info_dynrec[used_save_info_dynrec].type=db_exception;
 	used_save_info_dynrec++;
 }
 
@@ -565,98 +660,66 @@ static void dyn_check_exception(HostReg reg) {
 
 bool DRC_CALL_CONV mem_readb_checked_drc(PhysPt address) DRC_FC;
 bool DRC_CALL_CONV mem_readb_checked_drc(PhysPt address) {
-	Bitu index=(address>>12);
-	if (paging.tlb.read[index]) {
-		*((Bit8u*)(&core_dynrec.readdata))=host_readb(paging.tlb.read[index]+address);
+	HostPt tlb_addr=get_tlb_read(address);
+	if (tlb_addr) {
+		*((Bit8u*)(&core_dynrec.readdata))=host_readb(tlb_addr+address);
 		return false;
 	} else {
-		Bitu uval;
-		bool retval;
-		retval=paging.tlb.handler[index]->readb_checked(address, &uval);
-		*((Bit8u*)(&core_dynrec.readdata))=(Bit8u)uval;
-		return retval;
+		return get_tlb_readhandler(address)->readb_checked(address, (Bit8u*)(&core_dynrec.readdata));
 	}
 }
 
 bool DRC_CALL_CONV mem_writeb_checked_drc(PhysPt address,Bit8u val) DRC_FC;
 bool DRC_CALL_CONV mem_writeb_checked_drc(PhysPt address,Bit8u val) {
-	Bitu index=(address>>12);
-	if (paging.tlb.write[index]) {
-		host_writeb(paging.tlb.write[index]+address,val);
+	HostPt tlb_addr=get_tlb_write(address);
+	if (tlb_addr) {
+		host_writeb(tlb_addr+address,val);
 		return false;
-	} else return paging.tlb.handler[index]->writeb_checked(address,val);
+	} else return get_tlb_writehandler(address)->writeb_checked(address,val);
 }
 
 bool DRC_CALL_CONV mem_readw_checked_drc(PhysPt address) DRC_FC;
 bool DRC_CALL_CONV mem_readw_checked_drc(PhysPt address) {
-#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
-	if (!(address & 1)) {
-#else
 	if ((address & 0xfff)<0xfff) {
-#endif
-			Bitu index=(address>>12);
-		if (paging.tlb.read[index]) {
-			*((Bit16u*)(&core_dynrec.readdata))=host_readw(paging.tlb.read[index]+address);
+		HostPt tlb_addr=get_tlb_read(address);
+		if (tlb_addr) {
+			*((Bit16u*)(&core_dynrec.readdata))=host_readw(tlb_addr+address);
 			return false;
-		} else {
-			Bitu uval;
-			bool retval;
-			retval=paging.tlb.handler[index]->readw_checked(address, &uval);
-			*((Bit16u*)(&core_dynrec.readdata))=(Bit16u)uval;
-			return retval;
-		}
-	} else return mem_unalignedreadw_checked_x86(address, ((Bit16u*)(&core_dynrec.readdata)));
+		} else return get_tlb_readhandler(address)->readw_checked(address, (Bit16u*)(&core_dynrec.readdata));
+	} else return mem_unalignedreadw_checked(address, ((Bit16u*)(&core_dynrec.readdata)));
 }
 
 bool DRC_CALL_CONV mem_readd_checked_drc(PhysPt address) DRC_FC;
 bool DRC_CALL_CONV mem_readd_checked_drc(PhysPt address) {
-#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
-	if (!(address & 3)) {
-#else
 	if ((address & 0xfff)<0xffd) {
-#endif
-		Bitu index=(address>>12);
-		if (paging.tlb.read[index]) {
-			*((Bit32u*)(&core_dynrec.readdata))=host_readd(paging.tlb.read[index]+address);
+		HostPt tlb_addr=get_tlb_read(address);
+		if (tlb_addr) {
+			*((Bit32u*)(&core_dynrec.readdata))=host_readd(tlb_addr+address);
 			return false;
-		} else {
-			Bitu uval;
-			bool retval;
-			retval=paging.tlb.handler[index]->readd_checked(address, &uval);
-			*((Bit32u*)(&core_dynrec.readdata))=(Bit32u)uval;
-			return retval;
-		}
-	} else return mem_unalignedreadd_checked_x86(address, ((Bit32u*)(&core_dynrec.readdata)));
+		} else return get_tlb_readhandler(address)->readd_checked(address, (Bit32u*)(&core_dynrec.readdata));
+	} else return mem_unalignedreadd_checked(address, ((Bit32u*)(&core_dynrec.readdata)));
 }
 
 bool DRC_CALL_CONV mem_writew_checked_drc(PhysPt address,Bit16u val) DRC_FC;
 bool DRC_CALL_CONV mem_writew_checked_drc(PhysPt address,Bit16u val) {
-#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
-	if (!(address & 1)) {
-#else
 	if ((address & 0xfff)<0xfff) {
-#endif
-		Bitu index=(address>>12);
-		if (paging.tlb.write[index]) {
-			host_writew(paging.tlb.write[index]+address,val);
+		HostPt tlb_addr=get_tlb_write(address);
+		if (tlb_addr) {
+			host_writew(tlb_addr+address,val);
 			return false;
-		} else return paging.tlb.handler[index]->writew_checked(address,val);
-	} else return mem_unalignedwritew_checked_x86(address,val);
+		} else return get_tlb_writehandler(address)->writew_checked(address,val);
+	} else return mem_unalignedwritew_checked(address,val);
 }
 
 bool DRC_CALL_CONV mem_writed_checked_drc(PhysPt address,Bit32u val) DRC_FC;
 bool DRC_CALL_CONV mem_writed_checked_drc(PhysPt address,Bit32u val) {
-#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
-	if (!(address & 3)) {
-#else
 	if ((address & 0xfff)<0xffd) {
-#endif
-		Bitu index=(address>>12);
-		if (paging.tlb.write[index]) {
-			host_writed(paging.tlb.write[index]+address,val);
+		HostPt tlb_addr=get_tlb_write(address);
+		if (tlb_addr) {
+			host_writed(tlb_addr+address,val);
 			return false;
-		} else return paging.tlb.handler[index]->writed_checked(address,val);
-	} else return mem_unalignedwrited_checked_x86(address,val);
+		} else return get_tlb_writehandler(address)->writed_checked(address,val);
+	} else return mem_unalignedwrited_checked(address,val);
 }
 
 
@@ -709,7 +772,7 @@ static void dyn_write_word(HostReg reg_addr,HostReg reg_val,bool dword) {
 
 // effective address calculation helper, op2 has to be present!
 // loads op1 into ea_reg and adds the scaled op2 and the immediate to it
-static void dyn_lea(HostReg ea_reg,void* op1,void* op2,Bitu scale,Bits imm) {
+static void dyn_lea_mem_mem(HostReg ea_reg,void* op1,void* op2,Bitu scale,Bits imm) {
 	if (scale || imm) {
 		if (op1!=NULL) {
 			gen_mov_word_to_reg(ea_reg,op1,true);
@@ -726,6 +789,79 @@ static void dyn_lea(HostReg ea_reg,void* op1,void* op2,Bitu scale,Bits imm) {
 	}
 }
 
+#ifdef DRC_USE_REGS_ADDR
+// effective address calculation helper
+// loads op1 into ea_reg and adds the scaled op2 and the immediate to it
+// op1 is cpu_regs[op1_index], op2 is cpu_regs[op2_index] 
+static void dyn_lea_regval_regval(HostReg ea_reg,Bitu op1_index,Bitu op2_index,Bitu scale,Bits imm) {
+	if (scale || imm) {
+		MOV_REG_VAL_TO_HOST_REG(ea_reg,op1_index);
+		MOV_REG_VAL_TO_HOST_REG(TEMP_REG_DRC,op2_index);
+
+		gen_lea(ea_reg,TEMP_REG_DRC,scale,imm);
+	} else {
+		MOV_REG_VAL_TO_HOST_REG(ea_reg,op2_index);
+		ADD_REG_VAL_TO_HOST_REG(ea_reg,op1_index);
+	}
+}
+
+// effective address calculation helper
+// loads op1 into ea_reg and adds the scaled op2 and the immediate to it
+// op2 is cpu_regs[op2_index] 
+static void dyn_lea_mem_regval(HostReg ea_reg,void* op1,Bitu op2_index,Bitu scale,Bits imm) {
+	if (scale || imm) {
+		if (op1!=NULL) {
+			gen_mov_word_to_reg(ea_reg,op1,true);
+			MOV_REG_VAL_TO_HOST_REG(TEMP_REG_DRC,op2_index);
+
+			gen_lea(ea_reg,TEMP_REG_DRC,scale,imm);
+		} else {
+			MOV_REG_VAL_TO_HOST_REG(ea_reg,op2_index);
+			gen_lea(ea_reg,scale,imm);
+		}
+	} else {
+		MOV_REG_VAL_TO_HOST_REG(ea_reg,op2_index);
+		if (op1!=NULL) gen_add(ea_reg,op1);
+	}
+}
+#endif
+
+#ifdef DRC_USE_SEGS_ADDR
+#ifdef DRC_USE_REGS_ADDR
+// effective address calculation helper
+// loads op1 into ea_reg and adds the scaled op2 and the immediate to it
+// op1 is Segs[op1_index], op2 is cpu_regs[op2_index] 
+static void dyn_lea_segphys_regval(HostReg ea_reg,Bitu op1_index,Bitu op2_index,Bitu scale,Bits imm) {
+	if (scale || imm) {
+		MOV_SEG_PHYS_TO_HOST_REG(ea_reg,op1_index);
+		MOV_REG_VAL_TO_HOST_REG(TEMP_REG_DRC,op2_index);
+
+		gen_lea(ea_reg,TEMP_REG_DRC,scale,imm);
+	} else {
+		MOV_REG_VAL_TO_HOST_REG(ea_reg,op2_index);
+		ADD_SEG_PHYS_TO_HOST_REG(ea_reg,op1_index);
+	}
+}
+
+#else
+
+// effective address calculation helper, op2 has to be present!
+// loads op1 into ea_reg and adds the scaled op2 and the immediate to it
+// op1 is Segs[op1_index] 
+static void dyn_lea_segphys_mem(HostReg ea_reg,Bitu op1_index,void* op2,Bitu scale,Bits imm) {
+	if (scale || imm) {
+		MOV_SEG_PHYS_TO_HOST_REG(ea_reg,op1_index);
+		gen_mov_word_to_reg(TEMP_REG_DRC,op2,true);
+
+		gen_lea(ea_reg,TEMP_REG_DRC,scale,imm);
+	} else {
+		gen_mov_word_to_reg(ea_reg,op2,true);
+		ADD_SEG_PHYS_TO_HOST_REG(ea_reg,op1_index);
+	}
+}
+#endif
+#endif
+
 // calculate the effective address and store it in ea_reg
 static void dyn_fill_ea(HostReg ea_reg,bool addseg=true) {
 	Bit8u seg_base=DRC_SEG_DS;
@@ -738,25 +874,25 @@ static void dyn_fill_ea(HostReg ea_reg,bool addseg=true) {
 		}
 		switch (decode.modrm.rm) {
 		case 0:// BX+SI
-			dyn_lea(ea_reg,DRCD_REG(DRC_REG_EBX),DRCD_REG(DRC_REG_ESI),0,imm);
+			DYN_LEA_REG_VAL_REG_VAL(ea_reg,DRC_REG_EBX,DRC_REG_ESI,0,imm);
 			break;
 		case 1:// BX+DI
-			dyn_lea(ea_reg,DRCD_REG(DRC_REG_EBX),DRCD_REG(DRC_REG_EDI),0,imm);
+			DYN_LEA_REG_VAL_REG_VAL(ea_reg,DRC_REG_EBX,DRC_REG_EDI,0,imm);
 			break;
 		case 2:// BP+SI
-			dyn_lea(ea_reg,DRCD_REG(DRC_REG_EBP),DRCD_REG(DRC_REG_ESI),0,imm);
+			DYN_LEA_REG_VAL_REG_VAL(ea_reg,DRC_REG_EBP,DRC_REG_ESI,0,imm);
 			seg_base=DRC_SEG_SS;
 			break;
 		case 3:// BP+DI
-			dyn_lea(ea_reg,DRCD_REG(DRC_REG_EBP),DRCD_REG(DRC_REG_EDI),0,imm);
+			DYN_LEA_REG_VAL_REG_VAL(ea_reg,DRC_REG_EBP,DRC_REG_EDI,0,imm);
 			seg_base=DRC_SEG_SS;
 			break;
 		case 4:// SI
-			gen_mov_word_to_reg(ea_reg,DRCD_REG(DRC_REG_ESI),true);
+			MOV_REG_VAL_TO_HOST_REG(ea_reg,DRC_REG_ESI);
 			if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 			break;
 		case 5:// DI
-			gen_mov_word_to_reg(ea_reg,DRCD_REG(DRC_REG_EDI),true);
+			MOV_REG_VAL_TO_HOST_REG(ea_reg,DRC_REG_EDI);
 			if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 			break;
 		case 6:// imm/BP
@@ -765,13 +901,13 @@ static void dyn_fill_ea(HostReg ea_reg,bool addseg=true) {
 				gen_mov_dword_to_reg_imm(ea_reg,(Bit32u)imm);
 				goto skip_extend_word;
 			} else {
-				gen_mov_word_to_reg(ea_reg,DRCD_REG(DRC_REG_EBP),true);
+				MOV_REG_VAL_TO_HOST_REG(ea_reg,DRC_REG_EBP);
 				gen_add_imm(ea_reg,(Bit32u)imm);
 				seg_base=DRC_SEG_SS;
 			}
 			break;
 		case 7: // BX
-			gen_mov_word_to_reg(ea_reg,DRCD_REG(DRC_REG_EBX),true);
+			MOV_REG_VAL_TO_HOST_REG(ea_reg,DRC_REG_EBX);
 			if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 			break;
 		}
@@ -780,7 +916,7 @@ static void dyn_fill_ea(HostReg ea_reg,bool addseg=true) {
 skip_extend_word:
 		if (addseg) {
 			// add the physical segment value if requested
-			gen_add(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
+			ADD_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
 		}
 	} else {
 		Bits imm=0;
@@ -824,14 +960,14 @@ skip_extend_word:
 								if (!scaled_reg_used) {
 									gen_mov_word_to_reg(ea_reg,(void*)val,true);
 								} else {
-									dyn_lea(ea_reg,NULL,DRCD_REG(scaled_reg),scale,0);
+									DYN_LEA_MEM_REG_VAL(ea_reg,NULL,scaled_reg,scale,0);
 									gen_add(ea_reg,(void*)val);
 								}
 							} else {
 								if (!scaled_reg_used) {
-									gen_mov_word_to_reg(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),true);
+									MOV_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
 								} else {
-									dyn_lea(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),DRCD_REG(scaled_reg),scale,0);
+									DYN_LEA_SEG_PHYS_REG_VAL(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base),scaled_reg,scale,0);
 								}
 								gen_add(ea_reg,(void*)val);
 							}
@@ -844,14 +980,14 @@ skip_extend_word:
 							if (!scaled_reg_used) {
 								gen_mov_dword_to_reg_imm(ea_reg,(Bit32u)imm);
 							} else {
-								dyn_lea(ea_reg,NULL,DRCD_REG(scaled_reg),scale,imm);
+								DYN_LEA_MEM_REG_VAL(ea_reg,NULL,scaled_reg,scale,imm);
 							}
 						} else {
 							if (!scaled_reg_used) {
-								gen_mov_word_to_reg(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),true);
+								MOV_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
 								if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 							} else {
-								dyn_lea(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),DRCD_REG(scaled_reg),scale,imm);
+								DYN_LEA_SEG_PHYS_REG_VAL(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base),scaled_reg,scale,imm);
 							}
 						}
 
@@ -873,19 +1009,19 @@ skip_extend_word:
 						// succeeded, use the pointer to avoid code invalidation
 						if (!addseg) {
 							if (!scaled_reg_used) {
-								gen_mov_word_to_reg(ea_reg,DRCD_REG(base_reg),true);
+								MOV_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 								gen_add(ea_reg,(void*)val);
 							} else {
-								dyn_lea(ea_reg,DRCD_REG(base_reg),DRCD_REG(scaled_reg),scale,0);
+								DYN_LEA_REG_VAL_REG_VAL(ea_reg,base_reg,scaled_reg,scale,0);
 								gen_add(ea_reg,(void*)val);
 							}
 						} else {
 							if (!scaled_reg_used) {
-								gen_mov_word_to_reg(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),true);
+								MOV_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
 							} else {
-								dyn_lea(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),DRCD_REG(scaled_reg),scale,0);
+								DYN_LEA_SEG_PHYS_REG_VAL(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base),scaled_reg,scale,0);
 							}
-							gen_add(ea_reg,DRCD_REG(base_reg));
+							ADD_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 							gen_add(ea_reg,(void*)val);
 						}
 						return;
@@ -898,19 +1034,19 @@ skip_extend_word:
 
 				if (!addseg) {
 					if (!scaled_reg_used) {
-						gen_mov_word_to_reg(ea_reg,DRCD_REG(base_reg),true);
+						MOV_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 						gen_add_imm(ea_reg,(Bit32u)imm);
 					} else {
-						dyn_lea(ea_reg,DRCD_REG(base_reg),DRCD_REG(scaled_reg),scale,imm);
+						DYN_LEA_REG_VAL_REG_VAL(ea_reg,base_reg,scaled_reg,scale,imm);
 					}
 				} else {
 					if (!scaled_reg_used) {
-						gen_mov_word_to_reg(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),true);
-						gen_add(ea_reg,DRCD_REG(base_reg));
+						MOV_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
+						ADD_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 						if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 					} else {
-						dyn_lea(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),DRCD_REG(scaled_reg),scale,imm);
-						gen_add(ea_reg,DRCD_REG(base_reg));
+						DYN_LEA_SEG_PHYS_REG_VAL(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base),scaled_reg,scale,imm);
+						ADD_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 					}
 				}
 
@@ -927,7 +1063,7 @@ skip_extend_word:
 				if (!addseg) {
 					gen_mov_dword_to_reg_imm(ea_reg,(Bit32u)imm);
 				} else {
-					gen_mov_word_to_reg(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),true);
+					MOV_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
 					if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 				}
 
@@ -950,11 +1086,11 @@ skip_extend_word:
 			if (decode_fetchd_imm(val)) {
 				// succeeded, use the pointer to avoid code invalidation
 				if (!addseg) {
-					gen_mov_word_to_reg(ea_reg,DRCD_REG(base_reg),true);
+					MOV_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 					gen_add(ea_reg,(void*)val);
 				} else {
-					gen_mov_word_to_reg(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),true);
-					gen_add(ea_reg,DRCD_REG(base_reg));
+					MOV_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
+					ADD_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 					gen_add(ea_reg,(void*)val);
 				}
 				return;
@@ -966,11 +1102,11 @@ skip_extend_word:
 		}
 
 		if (!addseg) {
-			gen_mov_word_to_reg(ea_reg,DRCD_REG(base_reg),true);
+			MOV_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 			if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 		} else {
-			gen_mov_word_to_reg(ea_reg,DRCD_SEG_PHYS(decode.seg_prefix_used ? decode.seg_prefix : seg_base),true);
-			gen_add(ea_reg,DRCD_REG(base_reg));
+			MOV_SEG_PHYS_TO_HOST_REG(ea_reg,(decode.seg_prefix_used ? decode.seg_prefix : seg_base));
+			ADD_REG_VAL_TO_HOST_REG(ea_reg,base_reg);
 			if (imm) gen_add_imm(ea_reg,(Bit32u)imm);
 		}
 	}

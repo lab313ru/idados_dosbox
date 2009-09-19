@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: serialport.cpp,v 1.7 2007-02-22 08:41:16 qbix79 Exp $ */
+/* $Id: serialport.cpp,v 1.12 2009-05-27 09:15:41 qbix79 Exp $ */
+
 #include <string.h>
 #include <ctype.h>
 
@@ -44,7 +45,8 @@ bool device_COM::Read(Bit8u * data,Bit16u * size) {
 	sclass->Write_MCR(0x03);
 	for (Bit16u i=0; i<*size; i++)
 	{
-		if(!(sclass->Getchar(&data[i],true,1000))) {
+		Bit8u status;
+		if(!(sclass->Getchar(&data[i],&status,true,1000))) {
 			*size=i;
 			return true;
 		}
@@ -80,7 +82,7 @@ bool device_COM::Close() {
 
 Bit16u device_COM::GetInformation(void) {
 	return 0x80A0;
-};
+}
 
 device_COM::device_COM(class CSerial* sc) {
 	sclass = sc;
@@ -938,8 +940,7 @@ void CSerial::Init_Registers () {
 
 	Bit32u initbps = 9600;
 	Bit8u bytesize = 8;
-    char parity = 'N';
-	Bit8u stopbits = 1;
+	char parity = 'N';
 							  
 	Bit8u lcrresult = 0;
 	Bit16u baudresult = 0;
@@ -1067,7 +1068,7 @@ CSerial::CSerial(Bitu id, CommandLine* cmd) {
 	if(debugfp) fprintf(debugfp,"COM%d: BASE %3x, IRQ %d\r\n\r\n",
 		COMNUMBER,base,irq);
 #endif
-};
+}
 
 bool CSerial::getBituSubstring(const char* name,Bitu* data, CommandLine* cmd) {
 	std::string tmpstring;
@@ -1081,8 +1082,8 @@ CSerial::~CSerial(void) {
 	DOS_DelDevice(mydosdevice);
 	for(Bitu i = 0; i <= SERIAL_BASE_EVENT_COUNT; i++)
 		removeEvent(i);
-};
-bool CSerial::Getchar(Bit8u* data, bool wait_dsr, Bitu timeout) {
+}
+bool CSerial::Getchar(Bit8u* data, Bit8u* lsr, bool wait_dsr, Bitu timeout) {
 	
 	double starttime=PIC_FullIndex();
 	// wait for it to become empty
@@ -1093,19 +1094,19 @@ bool CSerial::Getchar(Bit8u* data, bool wait_dsr, Bitu timeout) {
 		if(!(starttime>PIC_FullIndex()-timeout)) {
 			#if SERIAL_DEBUG
 if(dbg_aux)
-		fprintf(debugfp,"%12.3f API read timeout: MSR 0x%x\r\n", PIC_FullIndex(),Read_MSR());
+		fprintf(debugfp,"%12.3f Getchar status timeout: MSR 0x%x\r\n", PIC_FullIndex(),Read_MSR());
 #endif
 			return false;
 		}
 	}
 	// wait for a byte to arrive
-	while((!(Read_LSR()&0x1))&&(starttime>PIC_FullIndex()-timeout))
+	while((!((*lsr=Read_LSR())&0x1))&&(starttime>PIC_FullIndex()-timeout))
 		CALLBACK_Idle();
 	
 	if(!(starttime>PIC_FullIndex()-timeout)) {
 		#if SERIAL_DEBUG
 if(dbg_aux)
-		fprintf(debugfp,"%12.3f API read timeout: MSR 0x%x\r\n", PIC_FullIndex(),Read_MSR());
+		fprintf(debugfp,"%12.3f Getchar data timeout: MSR 0x%x\r\n", PIC_FullIndex(),Read_MSR());
 #endif
 		return false;
 	}
@@ -1146,7 +1147,7 @@ bool CSerial::Putchar(Bit8u data, bool wait_dsr, bool wait_cts, Bitu timeout) {
 		if(!(starttime>PIC_FullIndex()-timeout)) {
 #if SERIAL_DEBUG
 			if(dbg_aux)
-				fprintf(debugfp,"%12.3f API write timeout: MSR 0x%x\r\n",
+				fprintf(debugfp,"%12.3f Putchar timeout: MSR 0x%x\r\n",
 					PIC_FullIndex(),Read_MSR());
 #endif
 			return false;
@@ -1165,68 +1166,55 @@ bool CSerial::Putchar(Bit8u data, bool wait_dsr, bool wait_cts, Bitu timeout) {
 class SERIALPORTS:public Module_base {
 public:
 	SERIALPORTS (Section * configuration):Module_base (configuration) {
-		
 		Bit16u biosParameter[4] = { 0, 0, 0, 0 };
 		Section_prop *section = static_cast <Section_prop*>(configuration);
 
-		const char *configstrings[4] = {
-			section->Get_string ("serial1"),
-			section->Get_string ("serial2"),
-			section->Get_string ("serial3"),
-			section->Get_string ("serial4")
-		};
-		// iterate through all 4 com ports
-		for (Bitu i = 0; i < 4; i++) {
-			biosParameter[i] = serial_baseaddr[i];
-
-			CommandLine* cmd;
-			std::string str;
-			cmd=new CommandLine(0,configstrings[i]);
-			cmd->FindCommand(1,str);
+		char s_property[] = "serialx"; 
+		for(Bitu i = 0; i < 4; i++) {
+			// get the configuration property
+			s_property[6] = '1' + i;
+			Prop_multival* p = section->Get_multival(s_property);
+			std::string type = p->GetSection()->Get_string("type");
+			CommandLine cmd(0,p->GetSection()->Get_string("parameters"));
 			
-			if(!str.compare("dummy")) {
-				serialports[i] = new CSerialDummy (i, cmd);
+			// detect the type
+			if (type=="dummy") {
+				serialports[i] = new CSerialDummy (i, &cmd);
 			}
 #ifdef DIRECTSERIAL_AVAILIBLE
-			else if(!str.compare("directserial")) {
-				serialports[i] = new CDirectSerial (i, cmd);
+			else if (type=="directserial") {
+				serialports[i] = new CDirectSerial (i, &cmd);
 				if (!serialports[i]->InstallationSuccessful)  {
 					// serial port name was wrong or already in use
 					delete serialports[i];
 					serialports[i] = NULL;
-					biosParameter[i] = 0;
 				}
 			}
 #endif
-
 #if C_MODEM
-			else if(!str.compare("modem")) {
-				serialports[i] = new CSerialModem (i, cmd);
+			else if(type=="modem") {
+				serialports[i] = new CSerialModem (i, &cmd);
 				if (!serialports[i]->InstallationSuccessful)  {
 					delete serialports[i];
 					serialports[i] = NULL;
-					biosParameter[i] = 0;
 				}
 			}
-			else if(!str.compare("nullmodem")) {
-				serialports[i] = new CNullModem (i, cmd);
+			else if(type=="nullmodem") {
+				serialports[i] = new CNullModem (i, &cmd);
 				if (!serialports[i]->InstallationSuccessful)  {
 					delete serialports[i];
 					serialports[i] = NULL;
-					biosParameter[i] = 0;
 				}
 			}
 #endif
-			else if(!str.compare("disabled")) {
+			else if(type=="disabled") {
 				serialports[i] = NULL;
-				biosParameter[i] = 0;
 			} else {
-				LOG_MSG ("Invalid type for COM%d.", i + 1);
 				serialports[i] = NULL;
-				biosParameter[i] = 0;
+				LOG_MSG("Invalid type for serial%d",i+1);
 			}
-			delete cmd;
-		} // for
+			if(serialports[i]) biosParameter[i] = serial_baseaddr[i];
+		} // for 1-4
 		BIOS_SetComPorts (biosParameter);
 	}
 

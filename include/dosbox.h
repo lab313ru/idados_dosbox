@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: dosbox.h,v 1.32 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #ifndef DOSBOX_DOSBOX_H
 #define DOSBOX_DOSBOX_H
@@ -44,12 +46,16 @@ enum MachineType {
 	MCH_CGA,
 	MCH_TANDY,
 	MCH_PCJR,
+	MCH_EGA,
 	MCH_VGA
 };
 
 enum SVGACards {
 	SVGA_None,
-	SVGA_S3Trio
+	SVGA_S3Trio,
+	SVGA_TsengET4K,
+	SVGA_TsengET3K,
+	SVGA_ParadisePVGA1A
 }; 
 
 extern SVGACards svgaCard;
@@ -57,7 +63,11 @@ extern MachineType machine;
 extern bool SDLNetInited;
 
 #define IS_TANDY_ARCH ((machine==MCH_TANDY) || (machine==MCH_PCJR))
+#define IS_EGAVGA_ARCH ((machine==MCH_EGA) || (machine==MCH_VGA))
+#define IS_VGA_ARCH (machine==MCH_VGA)
 #define TANDY_ARCH_CASE MCH_TANDY: case MCH_PCJR
+#define EGAVGA_ARCH_CASE MCH_EGA: case MCH_VGA
+#define VGA_ARCH_CASE MCH_VGA
 
 #ifndef DOSBOX_LOGGING_H
 #include "logging.h"

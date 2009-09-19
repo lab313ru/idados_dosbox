@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdl_mapper.cpp,v 1.44 2007-08-17 18:49:56 qbix79 Exp $ */
+/* $Id: sdl_mapper.cpp,v 1.59 2009-05-14 18:01:25 qbix79 Exp $ */
 
 #include <vector>
 #include <list>
@@ -53,7 +53,7 @@ enum BB_Types {
 
 enum BC_Types {
 	BC_Mod1,BC_Mod2,BC_Mod3,
-	BC_Hold,
+	BC_Hold
 };
 
 #define BMOD_Mod1 0x0001
@@ -106,8 +106,8 @@ public:
 	void AddBind(CBind * bind);
 	virtual ~CEvent() {}
 	virtual void Active(bool yesno)=0;
-	virtual void Activate(bool ev_trigger)=0;
-	virtual void DeActivate(bool ev_trigger)=0;
+	virtual void ActivateEvent(bool ev_trigger,bool skip_action)=0;
+	virtual void DeActivateEvent(bool ev_trigger)=0;
 	void DeActivateAll(void);
 	void SetValue(Bits value){
 		current_value=value;
@@ -131,20 +131,20 @@ public:
 	virtual bool IsTrigger(void) {
 		return true;
 	}
-	void Activate(bool ev_trigger) {
+	void ActivateEvent(bool ev_trigger,bool skip_action) {
 		if (current_value>25000) {
 			/* value exceeds boundary, trigger event if not active */
-			if (!activity) Active(true);
+			if (!activity && !skip_action) Active(true);
 			if (activity<32767) activity++;
 		} else {
 			if (activity>0) {
 				/* untrigger event if it is fully inactive */
-				DeActivate(ev_trigger);
+				DeActivateEvent(ev_trigger);
 				activity=0;
 			}
 		}
 	}
-	void DeActivate(bool /*ev_trigger*/) {
+	void DeActivateEvent(bool /*ev_trigger*/) {
 		activity--;
 		if (!activity) Active(false);
 	}
@@ -157,17 +157,17 @@ public:
 	virtual bool IsTrigger(void) {
 		return false;
 	}
-	void Activate(bool ev_trigger) {
+	void ActivateEvent(bool ev_trigger,bool skip_action) {
 		if (ev_trigger) {
 			activity++;
-			Active(true);
+			if (!skip_action) Active(true);
 		} else {
 			/* test if no trigger-activity is present, this cares especially
 			   about activity of the opposite-direction joystick axis for example */
 			if (!GetActivityCount()) Active(true);
 		}
 	}
-	void DeActivate(bool ev_trigger) {
+	void DeActivateEvent(bool ev_trigger) {
 		if (ev_trigger) {
 			if (activity>0) activity--;
 			if (activity==0) {
@@ -214,27 +214,27 @@ public:
 			if (!strcasecmp(word,"hold")) flags|=BFLG_Hold;
 		}
 	}
-	void Activate(Bits _value,bool ev_trigger) {
+	void ActivateBind(Bits _value,bool ev_trigger,bool skip_action=false) {
 		if (event->IsTrigger()) {
 			/* use value-boundary for on/off events */
 			if (_value>25000) {
 				event->SetValue(_value);
 				if (active) return;
-				event->Activate(ev_trigger);
+				event->ActivateEvent(ev_trigger,skip_action);
 				active=true;
 			} else {
 				if (active) {
-					event->DeActivate(ev_trigger);
+					event->DeActivateEvent(ev_trigger);
 					active=false;
 				}
 			}
 		} else {
 			/* store value for possible later use in the activated event */
 			event->SetValue(_value);
-			event->Activate(ev_trigger);
+			event->ActivateEvent(ev_trigger,false);
 		}
 	}
-	void DeActivate(bool ev_trigger) {
+	void DeActivateBind(bool ev_trigger) {
 		if (event->IsTrigger()) {
 			if (!active) return;
 			active=false;
@@ -248,11 +248,11 @@ public:
 					holding=false;
 				}
 			}
-			event->DeActivate(ev_trigger);
+			event->DeActivateEvent(ev_trigger);
 		} else {
 			/* store value for possible later use in the activated event */
 			event->SetValue(0);
-			event->DeActivate(ev_trigger);
+			event->DeActivateEvent(ev_trigger);
 		}
 	}
 	virtual void ConfigName(char * buf)=0;
@@ -272,7 +272,7 @@ void CEvent::AddBind(CBind * bind) {
 }
 void CEvent::DeActivateAll(void) {
 	for (CBindList_it bit=bindlist.begin();bit!=bindlist.end();bit++) {
-		(*bit)->DeActivate(true);
+		(*bit)->DeActivateBind(true);
 	}
 }
 
@@ -422,7 +422,10 @@ Bitu GetKeyCode(SDL_keysym keysym) {
 #if defined (WIN32)
 		switch (key) {
 			case 0x1c:	// ENTER
+			case 0x1d:	// CONTROL
 			case 0x35:	// SLASH
+			case 0x37:	// PRINTSCREEN
+			case 0x38:	// ALT
 			case 0x45:	// PAUSE
 			case 0x47:	// HOME
 			case 0x48:	// cursor UP
@@ -1217,7 +1220,7 @@ protected:
 	Bit16u button_state;
 };
 
-static struct {
+static struct CMapper {
 	SDL_Surface * surface;
 	SDL_Surface * draw_surface;
 	bool exit;
@@ -1231,7 +1234,7 @@ static struct {
 		Bitu num_groups,num;
 		CStickBindGroup * stick[MAXSTICKS];
 	} sticks;
-	const char * filename;
+	std::string filename;
 } mapper;
 
 void CBindGroup::ActivateBindList(CBindList * list,Bits value,bool ev_trigger) {
@@ -1244,14 +1247,14 @@ void CBindGroup::ActivateBindList(CBindList * list,Bits value,bool ev_trigger) {
 	}
 	for (it=list->begin();it!=list->end();it++) {
 	/*BUG:CRASH if keymapper key is removed*/
-		if (validmod==(*it)->mods) (*it)->Activate(value,ev_trigger);
+		if (validmod==(*it)->mods) (*it)->ActivateBind(value,ev_trigger);
 	}
 }
 
 void CBindGroup::DeactivateBindList(CBindList * list,bool ev_trigger) {
 	CBindList_it it;
 	for (it=list->begin();it!=list->end();it++) {
-		(*it)->DeActivate(ev_trigger);
+		(*it)->DeActivateBind(ev_trigger);
 	}
 }
 
@@ -1614,7 +1617,7 @@ static struct {
 
 
 static void change_action_text(const char* text,Bit8u col) {
-	bind_but.action->Change(text);
+	bind_but.action->Change(text,"");
 	bind_but.action->SetColor(col);
 }
 
@@ -1671,12 +1674,13 @@ static void DrawButtons(void) {
 	SDL_Flip(mapper.surface);
 }
 
-static void AddKeyButtonEvent(Bitu x,Bitu y,Bitu dx,Bitu dy,char const * const title,char const * const entry,KBD_KEYS key) {
+static CKeyEvent * AddKeyButtonEvent(Bitu x,Bitu y,Bitu dx,Bitu dy,char const * const title,char const * const entry,KBD_KEYS key) {
 	char buf[64];
 	strcpy(buf,"key_");
 	strcat(buf,entry);
 	CKeyEvent * event=new CKeyEvent(buf,key);
 	new CEventButton(x,y,dx,dy,title,event);
+	return event;
 }
 
 static CJAxisEvent * AddJAxisButton(Bitu x,Bitu y,Bitu dx,Bitu dy,char const * const title,Bitu stick,Bitu axis,bool positive,CJAxisEvent * opposite_axis) {
@@ -1762,6 +1766,8 @@ static KeyBlock combo_4[11]={
 	{".","period",KBD_period},						{"/","slash",KBD_slash},		
 };
 
+static CKeyEvent * caps_lock_event=NULL;
+static CKeyEvent * num_lock_event=NULL;
 
 static void CreateLayout(void) {
 	Bitu i;
@@ -1780,7 +1786,7 @@ static void CreateLayout(void) {
 
 	AddKeyButtonEvent(PX(14),PY(2),BW*2,BH*2,"ENTER","enter",KBD_enter);
 	
-	AddKeyButtonEvent(PX(0),PY(3),BW*2,BH,"CLCK","capslock",KBD_capslock);
+	caps_lock_event=AddKeyButtonEvent(PX(0),PY(3),BW*2,BH,"CLCK","capslock",KBD_capslock);
 	for (i=0;i<12;i++) AddKeyButtonEvent(PX(2+i),PY(3),BW,BH,combo_3[i].title,combo_3[i].entry,combo_3[i].key);
 
 	AddKeyButtonEvent(PX(0),PY(4),BW*2,BH,"SHIFT","lshift",KBD_leftshift);
@@ -1795,7 +1801,6 @@ static void CreateLayout(void) {
 	AddKeyButtonEvent(PX(14),PY(5),BW*2,BH,"CTRL","rctrl",KBD_rightctrl);
 
 	/* Arrow Keys */
-   
 	AddKeyButtonEvent(PX(0),PY(7),BW,BH,"PRT","printscreen",KBD_printscreen);
 	AddKeyButtonEvent(PX(1),PY(7),BW,BH,"SCL","scrolllock",KBD_scrolllock);
 	AddKeyButtonEvent(PX(2),PY(7),BW,BH,"PAU","pause",KBD_pause);
@@ -1809,8 +1814,9 @@ static void CreateLayout(void) {
 	AddKeyButtonEvent(PX(0),PY(11),BW,BH,"\x1B","left",KBD_left);
 	AddKeyButtonEvent(PX(1),PY(11),BW,BH,"\x19","down",KBD_down);
 	AddKeyButtonEvent(PX(2),PY(11),BW,BH,"\x1A","right",KBD_right);
+
 	/* Numeric KeyPad */
-	AddKeyButtonEvent(PX(4),PY(7),BW,BH,"NUM","numlock",KBD_numlock);
+	num_lock_event=AddKeyButtonEvent(PX(4),PY(7),BW,BH,"NUM","numlock",KBD_numlock);
 	AddKeyButtonEvent(PX(5),PY(7),BW,BH,"/","kp_divide",KBD_kpdivide);
 	AddKeyButtonEvent(PX(6),PY(7),BW,BH,"*","kp_multiply",KBD_kpmultiply);
 	AddKeyButtonEvent(PX(7),PY(7),BW,BH,"-","kp_minus",KBD_kpminus);
@@ -2077,9 +2083,9 @@ void MAPPER_AddHandler(MAPPER_Handler * handler,MapKeys key,Bitu mods,char const
 }
 
 static void MAPPER_SaveBinds(void) {
-	FILE * savefile=fopen(mapper.filename,"wb+");
+	FILE * savefile=fopen(mapper.filename.c_str(),"wb+");
 	if (!savefile) {
-		LOG_MSG("Can't open %s for saving the mappings",mapper.filename);
+		LOG_MSG("Can't open %s for saving the mappings",mapper.filename.c_str());
 		return;
 	}
 	char buf[128];
@@ -2099,14 +2105,14 @@ static void MAPPER_SaveBinds(void) {
 }
 
 static bool MAPPER_LoadBinds(void) {
-	FILE * loadfile=fopen(mapper.filename,"rb+");
+	FILE * loadfile=fopen(mapper.filename.c_str(),"rb");
 	if (!loadfile) return false;
 	char linein[512];
 	while (fgets(linein,512,loadfile)) {
 		CreateStringBind(linein);
 	}
 	fclose(loadfile);
-	LOG_MSG("MAPPER: Loading mapper settings from %s", mapper.filename);
+	LOG_MSG("MAPPER: Loading mapper settings from %s", mapper.filename.c_str());
 	return true;
 }
 
@@ -2150,12 +2156,50 @@ static void InitializeJoysticks(void) {
 	if (joytype != JOY_NONE) {
 		mapper.sticks.num=SDL_NumJoysticks();
 		if (joytype==JOY_AUTO) {
+			// try to figure out what joystick type to select
+			// depending on the number of physically attached joysticks
 			if (mapper.sticks.num>1) {
-				joytype=JOY_2AXIS;
-				LOG_MSG("Two or more joysticks reported, initializing with 2axis");
+				// more than one joystick present; if all are acceptable use 2axis
+				// to allow emulation of two joysticks
+				bool first_usable=false;
+				SDL_Joystick* tmp_stick1=SDL_JoystickOpen(0);
+				if (tmp_stick1) {
+					if ((SDL_JoystickNumAxes(tmp_stick1)>1) || (SDL_JoystickNumButtons(tmp_stick1)>0)) {
+						first_usable=true;
+					}
+					SDL_JoystickClose(tmp_stick1);
+				}
+				bool second_usable=false;
+				SDL_Joystick* tmp_stick2=SDL_JoystickOpen(1);
+				if (tmp_stick2) {
+					if ((SDL_JoystickNumAxes(tmp_stick2)>1) || (SDL_JoystickNumButtons(tmp_stick2)>0)) {
+						second_usable=true;
+					}
+					SDL_JoystickClose(tmp_stick2);
+				}
+				// choose joystick type now that we know which physical joysticks are usable
+				if (first_usable) {
+					if (second_usable) {
+						joytype=JOY_2AXIS;
+						LOG_MSG("Two or more joysticks reported, initializing with 2axis");
+					} else {
+						joytype=JOY_4AXIS;
+						LOG_MSG("One joystick reported, initializing with 4axis");
+					}
+				} else if (second_usable) {
+					joytype=JOY_4AXIS_2;
+					LOG_MSG("One joystick reported, initializing with 4axis_2");
+				}
 			} else if (mapper.sticks.num) {
-				joytype=JOY_4AXIS;
-				LOG_MSG("One joystick reported, initializing with 4axis");
+				// one joystick present; if it is acceptable use 4axis
+				joytype=JOY_NONE;
+				SDL_Joystick* tmp_stick1=SDL_JoystickOpen(0);
+				if (tmp_stick1) {
+					if ((SDL_JoystickNumAxes(tmp_stick1)>0) || (SDL_JoystickNumButtons(tmp_stick1)>0)) {
+						joytype=JOY_4AXIS;
+						LOG_MSG("One joystick reported, initializing with 4axis");
+					}
+				}
 			} else {
 				joytype=JOY_NONE;
 			}
@@ -2172,7 +2216,7 @@ static void CreateBindGroups(void) {
 		if (mapper.sticks.num) SDL_JoystickEventState(SDL_DISABLE);
 #else
 		// enable joystick event handling
-		if (numsticks) SDL_JoystickEventState(SDL_ENABLE);
+		if (mapper.sticks.num) SDL_JoystickEventState(SDL_ENABLE);
 		else return;
 #endif
 		Bit8u joyno=0;
@@ -2218,18 +2262,19 @@ void MAPPER_UpdateJoysticks(void) {
 
 void MAPPER_LosingFocus(void) {
 	for (CEventVector_it evit=events.begin();evit!=events.end();evit++) {
-		(*evit)->DeActivateAll();
+		if(*evit != caps_lock_event && *evit != num_lock_event)
+			(*evit)->DeActivateAll();
 	}
 }
 
 void MAPPER_Run(bool pressed) {
-	if (!pressed)
+	if (pressed)
 		return;
-	/* Deactive all running binds */
-	for (CEventVector_it evit=events.begin();evit!=events.end();evit++) {
-		(*evit)->DeActivateAll();
-	}
-		
+	KEYBOARD_ClrBuffer();	//Clear buffer
+	GFX_LosingFocus();		//Release any keys pressed (buffer gets filled again).
+
+	int cursor = SDL_ShowCursor(SDL_QUERY);
+	SDL_ShowCursor(SDL_ENABLE);
 	bool mousetoggle=false;
 	if(mouselocked) {
 		mousetoggle=true;
@@ -2266,6 +2311,7 @@ void MAPPER_Run(bool pressed) {
 	SDL_JoystickEventState(SDL_DISABLE);
 #endif
 	if(mousetoggle) GFX_CaptureMouse();
+	SDL_ShowCursor(cursor);
 	GFX_ResetScreen();
 }
 
@@ -2274,8 +2320,22 @@ void MAPPER_Init(void) {
 	CreateLayout();
 	CreateBindGroups();
 	if (!MAPPER_LoadBinds()) CreateDefaultBinds();
+	if (SDL_GetModState()&KMOD_CAPS) {
+		for (CBindList_it bit=caps_lock_event->bindlist.begin();bit!=caps_lock_event->bindlist.end();bit++) {
+			(*bit)->ActivateBind(32767,true,true);
+		}
+	}
+	if (SDL_GetModState()&KMOD_NUM) {
+		for (CBindList_it bit=num_lock_event->bindlist.begin();bit!=num_lock_event->bindlist.end();bit++) {
+			(*bit)->ActivateBind(32767,true,true);
+		}
+	}
 }
-
+//Somehow including them at the top conflicts with something in setup.h
+#ifdef C_X11_XKB
+#include "SDL_syswm.h"
+#include <X11/XKBlib.h>
+#endif
 void MAPPER_StartUp(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	mapper.sticks.num=0;
@@ -2292,7 +2352,7 @@ void MAPPER_StartUp(Section * sec) {
 		virtual_joysticks[0].axis_pos[i]=0;
 	}
 
-	usescancodes=false;
+	usescancodes = false;
 
 	if (section->Get_bool("usescancodes")) {
 		usescancodes=true;
@@ -2319,23 +2379,62 @@ void MAPPER_StartUp(Section * sec) {
 		sdlkey_map[0x5E]=SDLK_RALT;
 		sdlkey_map[0x40]=SDLK_KP5;
 		sdlkey_map[0x41]=SDLK_KP6;
-#elif !defined (WIN32) /* => Linux */
-		sdlkey_map[0x5a]=SDLK_UP;
-		sdlkey_map[0x60]=SDLK_DOWN;
-		sdlkey_map[0x5c]=SDLK_LEFT;
-		sdlkey_map[0x5e]=SDLK_RIGHT;
-		sdlkey_map[0x59]=SDLK_HOME;
-		sdlkey_map[0x5f]=SDLK_END;
-		sdlkey_map[0x5b]=SDLK_PAGEUP;
-		sdlkey_map[0x61]=SDLK_PAGEDOWN;
-		sdlkey_map[0x62]=SDLK_INSERT;
-		sdlkey_map[0x63]=SDLK_DELETE;
-		sdlkey_map[0x68]=SDLK_KP_DIVIDE;
-		sdlkey_map[0x64]=SDLK_KP_ENTER;
-		sdlkey_map[0x65]=SDLK_RCTRL;
-		sdlkey_map[0x66]=SDLK_PAUSE;
-		sdlkey_map[0x67]=SDLK_PRINT;
-		sdlkey_map[0x69]=SDLK_RALT;
+#elif !defined (WIN32) /* => Linux & BSDs */
+		bool evdev_input = false;
+#ifdef C_X11_XKB
+		SDL_SysWMinfo info;
+		SDL_VERSION(&info.version);
+		if (SDL_GetWMInfo(&info)) {
+			XkbDescPtr desc = NULL;
+			if((desc = XkbGetMap(info.info.x11.display,XkbAllComponentsMask,XkbUseCoreKbd))) {
+				if(XkbGetNames(info.info.x11.display,XkbAllNamesMask,desc) == 0) {
+					const char* keycodes = XGetAtomName(info.info.x11.display, desc->names->keycodes);
+//					const char* geom = XGetAtomName(info.info.x11.display, desc->names->geometry);
+					if(keycodes) {
+						LOG(LOG_MISC,LOG_NORMAL)("keyboard type %s",keycodes);
+						if (strncmp(keycodes,"evdev",5) == 0) evdev_input = true;
+					}
+					XkbFreeNames(desc,XkbAllNamesMask,True);
+				}
+			XkbFreeClientMap(desc,0,True);
+			}
+		}
+#endif
+		if (evdev_input) {
+			sdlkey_map[0x67]=SDLK_UP;
+			sdlkey_map[0x6c]=SDLK_DOWN;
+			sdlkey_map[0x69]=SDLK_LEFT;
+			sdlkey_map[0x6a]=SDLK_RIGHT;
+			sdlkey_map[0x66]=SDLK_HOME;
+			sdlkey_map[0x6b]=SDLK_END;
+			sdlkey_map[0x68]=SDLK_PAGEUP;
+			sdlkey_map[0x6d]=SDLK_PAGEDOWN;
+			sdlkey_map[0x6e]=SDLK_INSERT;
+			sdlkey_map[0x6f]=SDLK_DELETE;
+			sdlkey_map[0x62]=SDLK_KP_DIVIDE;
+			sdlkey_map[0x60]=SDLK_KP_ENTER;
+			sdlkey_map[0x61]=SDLK_RCTRL;
+			sdlkey_map[0x77]=SDLK_PAUSE;
+			sdlkey_map[0x63]=SDLK_PRINT;
+			sdlkey_map[0x64]=SDLK_RALT;
+		} else {
+			sdlkey_map[0x5a]=SDLK_UP;
+			sdlkey_map[0x60]=SDLK_DOWN;
+			sdlkey_map[0x5c]=SDLK_LEFT;
+			sdlkey_map[0x5e]=SDLK_RIGHT;
+			sdlkey_map[0x59]=SDLK_HOME;
+			sdlkey_map[0x5f]=SDLK_END;
+			sdlkey_map[0x5b]=SDLK_PAGEUP;
+			sdlkey_map[0x61]=SDLK_PAGEDOWN;
+			sdlkey_map[0x62]=SDLK_INSERT;
+			sdlkey_map[0x63]=SDLK_DELETE;
+			sdlkey_map[0x68]=SDLK_KP_DIVIDE;
+			sdlkey_map[0x64]=SDLK_KP_ENTER;
+			sdlkey_map[0x65]=SDLK_RCTRL;
+			sdlkey_map[0x66]=SDLK_PAUSE;
+			sdlkey_map[0x67]=SDLK_PRINT;
+			sdlkey_map[0x69]=SDLK_RALT;
+		}
 #else
 		sdlkey_map[0xc8]=SDLK_UP;
 		sdlkey_map[0xd0]=SDLK_DOWN;
@@ -2363,7 +2462,8 @@ void MAPPER_StartUp(Section * sec) {
 		}
 	}
 
-	mapper.filename=section->Get_string("mapperfile");
+	Prop_path* pp = section->Get_path("mapperfile");
+	mapper.filename = pp->realpath;
 	MAPPER_AddHandler(&MAPPER_Run,MK_f1,MMOD1,"mapper","Mapper");
 }
 

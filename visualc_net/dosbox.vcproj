@@ -159,7 +159,7 @@
 				RelativePath="..\src\dosbox.cpp">
 			</File>
 			<File
-				RelativePath="..\src\dosbox.rc">
+				RelativePath="..\src\winres.rc">
 			</File>
 			<Filter
 				Name="cpu"
@@ -178,6 +178,9 @@
 				</File>
 				<File
 					RelativePath="..\src\cpu\core_normal.cpp">
+				</File>
+				<File
+					RelativePath="..\src\cpu\core_prefetch.cpp">
 				</File>
 				<File
 					RelativePath="..\src\cpu\core_simple.cpp">
@@ -514,10 +517,16 @@
 						RelativePath="..\src\hardware\vga_other.cpp">
 					</File>
 					<File
+						RelativePath="..\src\hardware\vga_paradise.cpp">
+					</File>
+					<File
 						RelativePath="..\src\hardware\vga_s3.cpp">
 					</File>
 					<File
 						RelativePath="..\src\hardware\vga_seq.cpp">
+					</File>
+					<File
+						RelativePath="..\src\hardware\vga_tseng.cpp">
 					</File>
 					<File
 						RelativePath="..\src\hardware\vga_xga.cpp">
@@ -528,6 +537,9 @@
 					Filter="">
 					<File
 						RelativePath="..\src\hardware\adlib.cpp">
+					</File>
+					<File
+						RelativePath="..\src\hardware\dbopl.cpp">
 					</File>
 					<File
 						RelativePath="..\src\hardware\disney.cpp">
@@ -629,10 +641,16 @@
 					RelativePath="..\src\gui\render_templates.h">
 				</File>
 				<File
+					RelativePath="..\src\gui\sdl_gui.cpp">
+				</File>
+				<File
 					RelativePath="..\src\gui\sdl_mapper.cpp">
 				</File>
 				<File
 					RelativePath="..\src\gui\sdlmain.cpp">
+				</File>
+				<File
+					RelativePath="..\src\libs\gui_tk\gui_tk.cpp">
 				</File>
 			</Filter>
 			<Filter
@@ -689,6 +707,12 @@
 					<File
 						RelativePath="..\src\ints\int10_vesa.cpp">
 					</File>
+					<File
+						RelativePath="..\src\ints\int10_video_state.cpp">
+					</File>
+					<File
+						RelativePath="..\src\ints\int10_vptable.cpp">
+					</File>
 				</Filter>
 			</Filter>
 			<Filter
@@ -711,6 +735,9 @@
 				Name="misc"
 				Filter="">
 				<File
+					RelativePath="..\src\misc\cross.cpp">
+				</File>
+				<File
 					RelativePath="..\src\misc\messages.cpp">
 				</File>
 				<File
@@ -728,12 +755,6 @@
 				Filter="">
 				<File
 					RelativePath="..\src\platform\visualc\config.h">
-				</File>
-				<File
-					RelativePath="..\src\platform\visualc\dirent.c">
-				</File>
-				<File
-					RelativePath="..\src\platform\visualc\dirent.h">
 				</File>
 				<File
 					RelativePath="..\src\platform\visualc\unistd.h">
@@ -760,7 +781,13 @@
 				RelativePath="..\include\bios.h">
 			</File>
 			<File
+				RelativePath="..\include\bios_disk.h">
+			</File>
+			<File
 				RelativePath="..\include\callback.h">
+			</File>
+			<File
+				RelativePath="..\include\control.h">
 			</File>
 			<File
 				RelativePath="..\include\cpu.h">

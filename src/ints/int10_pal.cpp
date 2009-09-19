@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,7 +39,8 @@ void INT10_SetSinglePaletteRegister(Bit8u reg,Bit8u val) {
 		IO_Read(VGAREG_TDY_RESET);
 		WriteTandyACTL(reg+0x10,val);
 		break;
-	case MCH_VGA:
+	case EGAVGA_ARCH_CASE:
+		if (!IS_VGA_ARCH) reg&=0x1f;
 		if(reg<=ACTL_MAX_REG) {
 			ResetACTL();
 			IO_Write(VGAREG_ACTL_ADDRESS,reg);
@@ -52,10 +53,18 @@ void INT10_SetSinglePaletteRegister(Bit8u reg,Bit8u val) {
 
 
 void INT10_SetOverscanBorderColor(Bit8u val) {
-	ResetACTL();
-	IO_Write(VGAREG_ACTL_ADDRESS,0x11);
-	IO_Write(VGAREG_ACTL_WRITE_DATA,val);
-	IO_Write(VGAREG_ACTL_ADDRESS,32);		//Enable output and protect palette
+	switch (machine) {
+	case TANDY_ARCH_CASE:
+		IO_Read(VGAREG_TDY_RESET);
+		WriteTandyACTL(0x02,val);
+		break;
+	case EGAVGA_ARCH_CASE:
+		ResetACTL();
+		IO_Write(VGAREG_ACTL_ADDRESS,0x11);
+		IO_Write(VGAREG_ACTL_WRITE_DATA,val);
+		IO_Write(VGAREG_ACTL_ADDRESS,32);		//Enable output and protect palette
+		break;
+	}
 }
 
 void INT10_SetAllPaletteRegisters(PhysPt data) {
@@ -70,7 +79,7 @@ void INT10_SetAllPaletteRegisters(PhysPt data) {
 		// Then the border
 		WriteTandyACTL(0x02,mem_readb(data));
 		break;
-	case MCH_VGA:
+	case EGAVGA_ARCH_CASE:
 		ResetACTL();
 		// First the colors
 		for(Bit8u i=0;i<0x10;i++) {
@@ -88,18 +97,27 @@ void INT10_SetAllPaletteRegisters(PhysPt data) {
 
 void INT10_ToggleBlinkingBit(Bit8u state) {
 	Bit8u value;
-	state&=0x01;
+//	state&=0x01;
+	if ((state>1) && (svgaCard==SVGA_S3Trio)) return;
 	ResetACTL();
 	
 	IO_Write(VGAREG_ACTL_ADDRESS,0x10);
 	value=IO_Read(VGAREG_ACTL_READ_DATA);
-	value&=0xf7;
-	value|=state<<3;
+	if (state<=1) {
+		value&=0xf7;
+		value|=state<<3;
+	}
 
 	ResetACTL();
 	IO_Write(VGAREG_ACTL_ADDRESS,0x10);
 	IO_Write(VGAREG_ACTL_WRITE_DATA,value);
 	IO_Write(VGAREG_ACTL_ADDRESS,32);		//Enable output and protect palette
+
+	if (state<=1) {
+		Bit8u msrval=real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_MSR)&0xdf;
+		if (state) msrval|=0x20;
+		real_writeb(BIOSMEM_SEG,BIOSMEM_CURRENT_MSR,msrval);
+	}
 }
 
 void INT10_GetSinglePaletteRegister(Bit8u reg,Bit8u * val) {
@@ -215,7 +233,7 @@ void INT10_SetBackgroundBorder(Bit8u val) {
 	real_writeb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAL,temp);
 	if (machine == MCH_CGA || IS_TANDY_ARCH)
 		IO_Write(0x3d9,temp);
-	else if (machine == MCH_VGA) {
+	else if (IS_EGAVGA_ARCH) {
 		val = ((val << 1) & 0x10) | (val & 0x7);
 		/* Aways set the overscan color */
 		INT10_SetSinglePaletteRegister( 0x11, val );
@@ -238,7 +256,7 @@ void INT10_SetColorSelect(Bit8u val) {
 	real_writeb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAL,temp);
 	if (machine == MCH_CGA || IS_TANDY_ARCH)
 		IO_Write(0x3d9,temp);
-	else if (machine == MCH_VGA) {
+	else if (IS_EGAVGA_ARCH) {
 		if (CurMode->mode <= 3) //Maybe even skip the total function!
 			return;
 		val = (temp & 0x10) | 2 | val;

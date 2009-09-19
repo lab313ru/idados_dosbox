@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -50,13 +50,19 @@ Note:  Each read or write of this register will cycle through first the
 
 enum {DAC_READ,DAC_WRITE};
 
-static INLINE void VGA_DAC_UpdateColor( Bitu index ) {
+static void VGA_DAC_SendColor( Bitu index, Bitu src ) {
+	const Bit8u red = vga.dac.rgb[src].red;
+	const Bit8u green = vga.dac.rgb[src].green;
+	const Bit8u blue = vga.dac.rgb[src].blue;
+	//Set entry in 16bit output lookup table
+	vga.dac.xlat16[index] = ((blue>>1)&0x1f) | (((green)&0x3f)<<5) | (((red>>1)&0x1f) << 11);
+	
+	RENDER_SetPal( index, (red << 2) | ( red >> 4 ), (green << 2) | ( green >> 4 ), (blue << 2) | ( blue >> 4 ) );
+}
+
+static void VGA_DAC_UpdateColor( Bitu index ) {
 	Bitu maskIndex = index & vga.dac.pel_mask;
-	RENDER_SetPal( index,
-		vga.dac.rgb[maskIndex].red << 2,
-		vga.dac.rgb[maskIndex].green << 2,
-		vga.dac.rgb[maskIndex].blue << 2
-	);
+	VGA_DAC_SendColor( index, maskIndex );
 }
 
 static void write_p3c6(Bitu port,Bitu val,Bitu iolen) {
@@ -126,10 +132,7 @@ static void write_p3c9(Bitu port,Bitu val,Bitu iolen) {
 			/* Check for attributes and DAC entry link */
 			for (Bitu i=0;i<16;i++) {
 				if (vga.dac.combine[i]==vga.dac.write_index) {
-					RENDER_SetPal(i,
-					vga.dac.rgb[vga.dac.write_index].red << 2,
-					vga.dac.rgb[vga.dac.write_index].green << 2,
-					vga.dac.rgb[vga.dac.write_index].blue << 2);
+					VGA_DAC_SendColor( i, vga.dac.write_index );
 				}
 			}
 		}
@@ -172,15 +175,13 @@ void VGA_DAC_CombineColor(Bit8u attr,Bit8u pal) {
 	/* Check if this is a new color */
 	vga.dac.combine[attr]=pal;
 	switch (vga.mode) {
-	case M_VGA:
 	case M_LIN8:
 		break;
+	case M_VGA:
+		// used by copper demo; almost no video card seems to suport it
+		if(!IS_VGA_ARCH || (svgaCard!=SVGA_None)) break;
 	default:
-		RENDER_SetPal(attr,
-			vga.dac.rgb[pal].red << 2,
-			vga.dac.rgb[pal].green << 2,
-			vga.dac.rgb[pal].blue << 2
-		);
+		VGA_DAC_SendColor( attr, pal );
 	}
 }
 
@@ -191,7 +192,7 @@ void VGA_DAC_SetEntry(Bitu entry,Bit8u red,Bit8u green,Bit8u blue) {
 	vga.dac.rgb[entry].blue=blue;
 	for (Bitu i=0;i<16;i++) 
 		if (vga.dac.combine[i]==entry)
-			RENDER_SetPal(i,red << 2,green << 2,blue << 2);
+			VGA_DAC_SendColor( i, i );
 }
 
 void VGA_SetupDAC(void) {
@@ -202,15 +203,29 @@ void VGA_SetupDAC(void) {
 	vga.dac.state=DAC_READ;
 	vga.dac.read_index=0;
 	vga.dac.write_index=0;
-	if (machine==MCH_VGA) {
+	if (IS_VGA_ARCH) {
 		/* Setup the DAC IO port Handlers */
 		IO_RegisterWriteHandler(0x3c6,write_p3c6,IO_MB);
 		IO_RegisterReadHandler(0x3c6,read_p3c6,IO_MB);
 		IO_RegisterWriteHandler(0x3c7,write_p3c7,IO_MB);
 		IO_RegisterReadHandler(0x3c7,read_p3c7,IO_MB);
-		IO_RegisterReadHandler(0x3c8,read_p3c8,IO_MB);
 		IO_RegisterWriteHandler(0x3c8,write_p3c8,IO_MB);
+		IO_RegisterReadHandler(0x3c8,read_p3c8,IO_MB);
 		IO_RegisterWriteHandler(0x3c9,write_p3c9,IO_MB);
 		IO_RegisterReadHandler(0x3c9,read_p3c9,IO_MB);
+	} else if (machine==MCH_EGA) {
+		for (Bitu i=0;i<64;i++) {
+			if ((i&4)>0) vga.dac.rgb[i].red=0x2a;
+			else vga.dac.rgb[i].red=0;
+			if ((i&32)>0) vga.dac.rgb[i].red+=0x15;
+
+			if ((i&2)>0) vga.dac.rgb[i].green=0x2a;
+			else vga.dac.rgb[i].green=0;
+			if ((i&16)>0) vga.dac.rgb[i].green+=0x15;
+
+			if ((i&1)>0) vga.dac.rgb[i].blue=0x2a;
+			else vga.dac.rgb[i].blue=0;
+			if ((i&8)>0) vga.dac.rgb[i].blue+=0x15;
+		}
 	}
-};
+}

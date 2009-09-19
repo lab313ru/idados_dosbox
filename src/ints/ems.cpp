@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: ems.cpp,v 1.55 2007-01-08 22:04:20 c2woody Exp $ */
+/* $Id: ems.cpp,v 1.62 2009-05-14 17:51:47 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -57,12 +57,14 @@
 #define EMM_INVALID_HANDLE		0x83
 #define EMM_FUNC_NOSUP			0x84
 #define EMM_OUT_OF_HANDLES		0x85
+#define EMM_SAVEMAP_ERROR		0x86
 #define EMM_OUT_OF_PHYS			0x87
 #define EMM_OUT_OF_LOG			0x88
 #define EMM_ZERO_PAGES			0x89
 #define EMM_LOG_OUT_RANGE		0x8a
 #define EMM_ILL_PHYS			0x8b
 #define EMM_PAGE_MAP_SAVED		0x8d
+#define EMM_NO_SAVED_PAGE_MAP	0x8e
 #define EMM_INVALID_SUB			0x8f
 #define EMM_FEAT_NOSUP			0x91
 #define EMM_MOVE_OVLAP			0x92
@@ -77,16 +79,16 @@ public:
 		SetName("EMMXXXX0");
 		GEMMIS_seg=0;
 	}
-	bool Read(Bit8u * data,Bit16u * size) { return false;}
-	bool Write(Bit8u * data,Bit16u * size){ 
+	bool Read(Bit8u * /*data*/,Bit16u * /*size*/) { return false;}
+	bool Write(Bit8u * /*data*/,Bit16u * /*size*/){ 
 		LOG(LOG_IOCTL,LOG_NORMAL)("EMS:Write to device");	
 		return false;
 	}
-	bool Seek(Bit32u * pos,Bit32u type){return false;}
+	bool Seek(Bit32u * /*pos*/,Bit32u /*type*/){return false;}
 	bool Close(){return false;}
 	Bit16u GetInformation(void){return 0xc080;}
 	bool ReadFromControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode);
-	bool WriteToControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode){return true;}
+	bool WriteToControlChannel(PhysPt /*bufptr*/,Bit16u /*size*/,Bit16u * /*retcode*/){return true;}
 private:
 	Bit8u cache;
 };
@@ -124,7 +126,7 @@ bool device_EMM::ReadFromControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retco
 				mem_writeb(GEMMIS_addr+0x0a+frnr,0x03);		// frame type: EMS frame in 64k page
 				mem_writeb(GEMMIS_addr+0x0b+frnr,0xff);		// owner: NONE
 				mem_writew(GEMMIS_addr+0x0c+frnr,0x7fff);	// no logical page number
-				mem_writeb(GEMMIS_addr+0x0e + frnr,frct);		// physical EMS page number
+				mem_writeb(GEMMIS_addr+0x0e + frnr,(Bit8u)(frct&0xff));		// physical EMS page number
 				mem_writeb(GEMMIS_addr+0x0f+frnr,0x00);		// EMS frame
 			}
 			/* build non-EMS ROM frames (0xf000-0x10000) */
@@ -210,9 +212,11 @@ static bool INLINE ValidHandle(Bit16u handle) {
 	return true;
 }
 
-static Bit8u EMM_AllocateMemory(Bit16u pages,Bit16u & dhandle) {
+static Bit8u EMM_AllocateMemory(Bit16u pages,Bit16u & dhandle,bool can_allocate_zpages) {
 	/* Check for 0 page allocation */
-	if (!pages) return EMM_ZERO_PAGES;
+	if (!pages) {
+		if (!can_allocate_zpages) return EMM_ZERO_PAGES;
+	}
 	/* Check for enough free pages */
 	if ((MEM_FreeTotal()/ 4) < pages) { return EMM_OUT_OF_LOG;}
 	Bit16u handle = 1;
@@ -220,8 +224,11 @@ static Bit8u EMM_AllocateMemory(Bit16u pages,Bit16u & dhandle) {
 	while (emm_handles[handle].pages != NULL_HANDLE) {
 		if (++handle >= EMM_MAX_HANDLES) {return EMM_OUT_OF_HANDLES;}
 	}
-	MemHandle mem = MEM_AllocatePages(pages*4,false);
-	if (!mem) E_Exit("EMS:Memory allocation failure");
+	MemHandle mem = 0;
+	if (pages) {
+		mem = MEM_AllocatePages(pages*4,false);
+		if (!mem) E_Exit("EMS:Memory allocation failure");
+	}
 	emm_handles[handle].pages = pages;
 	emm_handles[handle].mem = mem;
 	/* Change handle only if there is no error. */
@@ -229,11 +236,32 @@ static Bit8u EMM_AllocateMemory(Bit16u pages,Bit16u & dhandle) {
 	return EMM_NO_ERROR;
 }
 
+static Bit8u EMM_AllocateSystemHandle(Bit16u pages) {
+	/* Check for enough free pages */
+	if ((MEM_FreeTotal()/ 4) < pages) { return EMM_OUT_OF_LOG;}
+	Bit16u handle = 0;	// emm system handle (reserved for OS usage)
+	/* Release memory if already allocated */
+	if (emm_handles[handle].pages != NULL_HANDLE) {
+		MEM_ReleasePages(emm_handles[handle].mem);
+	}
+	MemHandle mem = MEM_AllocatePages(pages*4,false);
+	if (!mem) E_Exit("EMS:System handle memory allocation failure");
+	emm_handles[handle].pages = pages;
+	emm_handles[handle].mem = mem;
+	return EMM_NO_ERROR;
+}
+
 static Bit8u EMM_ReallocatePages(Bit16u handle,Bit16u & pages) {
 	/* Check for valid handle */
 	if (!ValidHandle(handle)) return EMM_INVALID_HANDLE;
-	/* Check for enough pages */
-	if (!MEM_ReAllocatePages(emm_handles[handle].mem,pages*4,false)) return EMM_OUT_OF_LOG;
+	if (emm_handles[handle].pages != 0) {
+		/* Check for enough pages */
+		if (!MEM_ReAllocatePages(emm_handles[handle].mem,pages*4,false)) return EMM_OUT_OF_LOG;
+	} else {
+		MemHandle mem = MEM_AllocatePages(pages*4,false);
+		if (!mem) E_Exit("EMS:Memory allocation failure during reallocation");
+		emm_handles[handle].mem = mem;
+	}
 	/* Update size */
 	emm_handles[handle].pages=pages;
 	return EMM_NO_ERROR;
@@ -328,10 +356,21 @@ static Bit8u EMM_MapSegment(Bitu segment,Bit16u handle,Bit16u log_page) {
 static Bit8u EMM_ReleaseMemory(Bit16u handle) {
 	/* Check for valid handle */
 	if (!ValidHandle(handle)) return EMM_INVALID_HANDLE;
-	MEM_ReleasePages(emm_handles[handle].mem);
+
+	// should check for saved_page_map flag here, returning an error if it's true
+	// as apps are required to restore the pagemap beforehand; to be checked
+//	if (emm_handles[handle].saved_page_map) return EMM_SAVEMAP_ERROR;
+
+	if (emm_handles[handle].pages != 0) {
+		MEM_ReleasePages(emm_handles[handle].mem);
+	}
 	/* Reset handle */
 	emm_handles[handle].mem=0;
-	emm_handles[handle].pages=NULL_HANDLE;
+	if (handle==0) {
+		emm_handles[handle].pages=0;	// OS handle is NEVER deallocated
+	} else {
+		emm_handles[handle].pages=NULL_HANDLE;
+	}
 	emm_handles[handle].saved_page_map=false;
 	memset(&emm_handles[handle].name,0,8);
 	return EMM_NO_ERROR;
@@ -372,7 +411,7 @@ static Bit8u EMM_RestorePageMap(Bit16u handle) {
 		if (handle!=0) return EMM_INVALID_HANDLE;
 	}
 	/* Check for previous save */
-	if (!emm_handles[handle].saved_page_map) return EMM_INVALID_HANDLE;
+	if (!emm_handles[handle].saved_page_map) return EMM_NO_SAVED_PAGE_MAP;
 	/* Restore the mappings */
 	emm_handles[handle].saved_page_map=false;
 	for (Bitu i=0;i<EMM_MAX_PHYS;i++) {
@@ -437,7 +476,7 @@ static Bit8u EMM_PartialPageMapping(void) {
 		return EMM_RestoreMappingTable();
 		break;
 	case 0x02:	/* Get Partial Page Map Array Size */
-		reg_al=2+reg_bx*(2+sizeof(EMM_Mapping));
+		reg_al=(Bit8u)(2+reg_bx*(2+sizeof(EMM_Mapping)));
 		break;
 	default:
 		LOG(LOG_MISC,LOG_ERROR)("EMS:Call %2X Subfunction %2X not supported",reg_ah,reg_al);
@@ -474,11 +513,11 @@ static Bit8u HandleNameSearch(void) {
 		return EMM_NOT_FOUND;
 		break;
 	case 0x02: /* Get Total number of handles */
-	  reg_bx=EMM_MAX_HANDLES;
-	  break;
+		reg_bx=EMM_MAX_HANDLES;
+		break;
 	default:
 		LOG(LOG_MISC,LOG_ERROR)("EMS:Call %2X Subfunction %2X not supported",reg_ah,reg_al);
-		return EMM_FUNC_NOSUP;
+		return EMM_INVALID_SUB;
 	}
 	return EMM_NO_ERROR;
 }
@@ -496,7 +535,7 @@ static Bit8u GetSetHandleName(void) {
 		break;
 	default:
 		LOG(LOG_MISC,LOG_ERROR)("EMS:Call %2X Subfunction %2X not supported",reg_ah,reg_al);
-		return EMM_FUNC_NOSUP;
+		return EMM_INVALID_SUB;
 	}
 	return EMM_NO_ERROR;
 
@@ -527,9 +566,9 @@ static Bit8u MemoryRegion(void) {
 	}
 	LoadMoveRegion(SegPhys(ds)+reg_si,region);
 	/* Parse the region for information */
-	PhysPt src_mem,dest_mem;
-	MemHandle src_handle,dest_handle;
-	Bitu src_off,dest_off;Bitu src_remain,dest_remain;
+	PhysPt src_mem = 0,dest_mem = 0;
+	MemHandle src_handle = 0,dest_handle = 0;
+	Bitu src_off = 0,dest_off = 0 ;Bitu src_remain = 0,dest_remain = 0;
 	if (!region.src_type) {
 		src_mem=region.src_page_seg*16+region.src_offset;
 	} else {
@@ -630,7 +669,7 @@ static Bitu INT67_Handler(void) {
 		reg_ah=EMM_NO_ERROR;
 		break;
 	case 0x43:		/* Get Handle and Allocate Pages */
-		reg_ah=EMM_AllocateMemory(reg_bx,reg_dx);
+		reg_ah=EMM_AllocateMemory(reg_bx,reg_dx,false);
 		break;
 	case 0x44:		/* Map Expanded Memory Page */
 		reg_ah=EMM_MapPage(reg_al,reg_dx,reg_bx);
@@ -682,7 +721,7 @@ static Bitu INT67_Handler(void) {
 			break;
 		default:
 			LOG(LOG_MISC,LOG_ERROR)("EMS:Call %2X Subfunction %2X not supported",reg_ah,reg_al);
-			reg_ah=EMM_FUNC_NOSUP;
+			reg_ah=EMM_INVALID_SUB;
 			break;
 		}
 		break;
@@ -709,6 +748,10 @@ static Bitu INT67_Handler(void) {
 						if (reg_ah!=EMM_NO_ERROR) break;
 					};
 				}
+				break;
+			default:
+				LOG(LOG_MISC,LOG_ERROR)("EMS:Call %2X Subfunction %2X not supported",reg_ah,reg_al);
+				reg_ah=EMM_INVALID_SUB;
 				break;
 		}
 		break;
@@ -739,11 +782,11 @@ static Bitu INT67_Handler(void) {
 		reg_ah = EMM_NO_ERROR;
 		break;
 	case 0x5A:              /* Allocate standard/raw Pages */
-		if (reg_al==0x00) {
-			reg_ah=EMM_AllocateMemory(reg_bx,reg_dx);
+		if (reg_al<=0x01) {
+			reg_ah=EMM_AllocateMemory(reg_bx,reg_dx,true);	// can allocate 0 pages
 		} else {
 			LOG(LOG_MISC,LOG_ERROR)("EMS:Call 5A subfct %2X not supported",reg_al);
-			reg_ah=EMM_FUNC_NOSUP;
+			reg_ah=EMM_INVALID_SUB;
 		};
 		break;
 	case 0xDE:		/* VCPI Functions */
@@ -1009,7 +1052,7 @@ static Bitu V86_Monitor() {
 						Bitu rm_val=mem_readb((v86_cs<<4)+v86_ip+2);
 						Bitu which=(rm_val >> 3) & 7;
 						if ((rm_val<0xc0) || (rm_val>=0xe8))
-							E_Exit("Invalid opcode 0x0f 0x20 %x caused a protection fault!",rm_val);
+							E_Exit("Invalid opcode 0x0f 0x20 %x caused a protection fault!",static_cast<unsigned int>(rm_val));
 						Bit32u crx=CPU_GET_CRX(which);
 						switch (rm_val&7) {
 							case 0:	reg_eax=crx;	break;
@@ -1028,8 +1071,8 @@ static Bitu V86_Monitor() {
 						Bitu rm_val=mem_readb((v86_cs<<4)+v86_ip+2);
 						Bitu which=(rm_val >> 3) & 7;
 						if ((rm_val<0xc0) || (rm_val>=0xe8))
-							E_Exit("Invalid opcode 0x0f 0x22 %x caused a protection fault!",rm_val);
-						Bit32u crx;
+							E_Exit("Invalid opcode 0x0f 0x22 %x caused a protection fault!",static_cast<unsigned int>(rm_val));
+						Bit32u crx=0;
 						switch (rm_val&7) {
 							case 0:	crx=reg_eax;	break;
 							case 1:	crx=reg_ecx;	break;
@@ -1130,7 +1173,7 @@ static void SetupVCPI() {
 	vcpi.pic2_remapping=0x70;	// slave PIC base
 
 	/* Allocate one EMS-page for private VCPI-data in memory beyond 1MB */
-	EMM_AllocateMemory(1,vcpi.ems_handle);
+	EMM_AllocateMemory(1,vcpi.ems_handle,false);
 	vcpi.private_area=emm_handles[vcpi.ems_handle].mem<<12;
 
 	/* GDT */
@@ -1212,7 +1255,7 @@ private:
 public:
 	EMS(Section* configuration):Module_base(configuration){
 
-	/* Virtual DMA interrupt callback */
+		/* Virtual DMA interrupt callback */
 		call_vdma.Install(&INT4B_Handler,CB_IRET,"Int 4b vdma");
 		call_vdma.Set_RealVec(0x4b);
 
@@ -1235,9 +1278,9 @@ public:
 		DOS_AddDevice(newdev);
 	
 		/* Add a little hack so it appears that there is an actual ems device installed */
-		char * emsname="EMMXXXX0";
+		char const* emsname="EMMXXXX0";
 		if(!emsnameseg) emsnameseg=DOS_GetMemory(2);	//We have 32 bytes
-		MEM_BlockWrite(PhysMake(emsnameseg,0xa),emsname,strlen(emsname)+1);
+		MEM_BlockWrite(PhysMake(emsnameseg,0xa),emsname,(Bitu)(strlen(emsname)+1));
 
 		/* Copy the callback piece into the beginning, and set the interrupt vector to it*/
 		char buf[16];
@@ -1260,6 +1303,8 @@ public:
 			emm_segmentmappings[i].page=NULL_PAGE;
 			emm_segmentmappings[i].handle=NULL_HANDLE;
 		}
+
+		EMM_AllocateSystemHandle(4);	// allocate OS-dedicated handle (ems handle zero)
 
 		if (!ENABLE_VCPI) return;
 
@@ -1339,7 +1384,7 @@ public:
 		
 static EMS* test;
 
-void EMS_ShutDown(Section* sec) {
+void EMS_ShutDown(Section* /*sec*/) {
 	delete test;	
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: decoder.h,v 1.6 2009-05-27 09:15:41 qbix79 Exp $ */
 
 
 #include "decoder_basic.h"
@@ -218,8 +220,18 @@ restart_prefix:
 
 				case 0xaf:dyn_imul_gvev(0);break;
 
-				case 0xb4:dyn_load_seg_off_ea(DRC_SEG_FS);break;
-				case 0xb5:dyn_load_seg_off_ea(DRC_SEG_GS);break;
+				// lfs
+				case 0xb4:
+					dyn_get_modrm();
+					if (GCC_UNLIKELY(decode.modrm.mod==3)) goto illegalopcode;
+					dyn_load_seg_off_ea(DRC_SEG_FS);
+					break;
+				// lgs
+				case 0xb5:
+					dyn_get_modrm();
+					if (GCC_UNLIKELY(decode.modrm.mod==3)) goto illegalopcode;
+					dyn_load_seg_off_ea(DRC_SEG_GS);
+					break;
 
 				// zero-extending moves
 				case 0xb6:dyn_movx_ev_gb(false);break;
@@ -314,11 +326,7 @@ restart_prefix:
 		case 0x8c:dyn_mov_ev_seg();break;
 
 		// load effective address
-		case 0x8d:
-			dyn_get_modrm();
-			dyn_fill_ea(FC_ADDR,false);
-			gen_mov_word_from_reg(FC_ADDR,DRCD_REG_WORD(decode.modrm.reg,decode.big_op),decode.big_op);
-			break;
+		case 0x8d:dyn_lea();break;
 
 		// move a value from memory or a 16bit register into a segment register
 		case 0x8e:dyn_mov_seg_ev();break;
@@ -413,8 +421,17 @@ restart_prefix:
 		case 0xc2:dyn_ret_near(decode_fetchw());goto finish_block;
 		case 0xc3:dyn_ret_near(0);goto finish_block;
 
-		case 0xc4:dyn_load_seg_off_ea(DRC_SEG_ES);break;
-		case 0xc5:dyn_load_seg_off_ea(DRC_SEG_DS);break;
+		// les
+		case 0xc4:
+			dyn_get_modrm();
+			if (GCC_UNLIKELY(decode.modrm.mod==3)) goto illegalopcode;
+			dyn_load_seg_off_ea(DRC_SEG_ES);
+			break;
+		// lds
+		case 0xc5:
+			dyn_get_modrm();
+			if (GCC_UNLIKELY(decode.modrm.mod==3)) goto illegalopcode;
+			dyn_load_seg_off_ea(DRC_SEG_DS);break;
 
 		// 'mov []/reg8/16/32,imm8/16/32'
 		case 0xc6:dyn_dop_ebib_mov();break;
@@ -530,11 +547,11 @@ restart_prefix:
 
 		case 0xfa:		//CLI
 			gen_call_function_raw((void *)&CPU_CLI);
-			if (cpu.pmode) dyn_check_exception(FC_RETOP);
+			dyn_check_exception(FC_RETOP);
 			break;
 		case 0xfb:		//STI
 			gen_call_function_raw((void *)&CPU_STI);
-			if (cpu.pmode) dyn_check_exception(FC_RETOP);
+			dyn_check_exception(FC_RETOP);
 			if (max_opcodes<=0) max_opcodes=1;		//Allow 1 extra opcode
 			break;
 

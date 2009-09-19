@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdlmain.cpp,v 1.134 2007-08-26 18:03:25 qbix79 Exp $ */
+/* $Id: sdlmain.cpp,v 1.153 2009-05-25 16:29:36 qbix79 Exp $ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -30,8 +30,10 @@
 #include <sys/types.h>
 #ifdef WIN32
 #include <signal.h>
+#include <process.h>
 #endif
 
+#include "cross.h"
 #include "SDL.h"
 
 #include "dosbox.h"
@@ -45,6 +47,9 @@
 #include "mapper.h"
 #include "vga.h"
 #include "keyboard.h"
+#include "cpu.h"
+#include "cross.h"
+#include "control.h"
 
 //#define DISABLE_JOYSTICK
 
@@ -70,7 +75,7 @@ typedef void (APIENTRY * PFNWGLFREEMEMORYNVPROC) (void *pointer);
 PFNWGLALLOCATEMEMORYNVPROC db_glAllocateMemoryNV = NULL;
 PFNWGLFREEMEMORYNVPROC db_glFreeMemoryNV = NULL;
 
-#else 
+#else
 
 #endif
 
@@ -126,7 +131,7 @@ struct private_hwdata {
 #include <os2.h>
 #endif
 
-enum SCREEN_TYPES	{ 
+enum SCREEN_TYPES	{
 	SCREEN_SURFACE,
 	SCREEN_SURFACE_DDRAW,
 	SCREEN_OVERLAY,
@@ -144,6 +149,7 @@ enum PRIORITY_LEVELS {
 
 
 struct SDL_Block {
+	bool inited;
 	bool active;							//If this isn't set don't draw
 	bool updating;
 	struct {
@@ -210,6 +216,9 @@ struct SDL_Block {
 #if defined (WIN32)
 	bool using_windib;
 #endif
+	// state of alt-keys for certain special handlings
+	Bit8u laltstate;
+	Bit8u raltstate;
 };
 
 static SDL_Block sdl;
@@ -249,13 +258,16 @@ static void PauseDOSBox(bool pressed) {
 	while (SDL_PollEvent(&event)) {
 		// flush event queue.
 	}
+
 	while (paused) {
 		SDL_WaitEvent(&event);    // since we're not polling, cpu usage drops to 0.
 		switch (event.type) {
-		case SDL_QUIT: throw(0); break;
-		case SDL_KEYDOWN:   // Must use Pause/Break Key to resume.
-		case SDL_KEYUP:
-			if(event.key.keysym.sym==SDLK_PAUSE){
+
+			case SDL_QUIT: throw(0); break;
+			case SDL_KEYDOWN:   // Must use Pause/Break Key to resume.
+			case SDL_KEYUP:
+			if(event.key.keysym.sym==SDLK_PAUSE) {
+
 				paused=false;
 				GFX_SetTitle(-1,-1,false);
 				break;
@@ -282,7 +294,9 @@ check_surface:
 		else if (flags & GFX_LOVE_16) testbpp=16;
 		else if (flags & GFX_LOVE_32) testbpp=32;
 		else testbpp=0;
+#if (HAVE_DDRAW_H) && defined(WIN32)
 check_gotbpp:
+#endif
 		if (sdl.desktop.fullscreen) gotbpp=SDL_VideoModeOK(640,480,testbpp,SDL_FULLSCREEN|SDL_HWSURFACE|SDL_HWPALETTE);
 		else gotbpp=sdl.desktop.bpp;
 		/* If we can't get our favorite mode check for another working one */
@@ -325,6 +339,9 @@ check_gotbpp:
 		flags&=~(GFX_CAN_8|GFX_CAN_15|GFX_CAN_16);
 		break;
 #endif
+	default:
+		goto check_surface;
+		break;
 	}
 	return flags;
 }
@@ -335,6 +352,7 @@ void GFX_ResetScreen(void) {
 	if (sdl.draw.callback)
 		(sdl.draw.callback)( GFX_CallBackReset );
 	GFX_Start();
+	CPU_Reset_AutoAdjust();
 }
 
 static int int_log2 (int val) {
@@ -368,7 +386,7 @@ static SDL_Surface * GFX_SetupSurfaceScaled(Bit32u sdl_flags, Bit32u bpp) {
 			sdl.clip.w=(Bit16u)(sdl.draw.width*sdl.draw.scalex*ratio_h);
 			sdl.clip.h=(Bit16u)fixedHeight;
 		}
-		if (sdl.desktop.fullscreen) 
+		if (sdl.desktop.fullscreen)
 			sdl.surface = SDL_SetVideoMode(fixedWidth,fixedHeight,bpp,sdl_flags);
 		else
 			sdl.surface = SDL_SetVideoMode(sdl.clip.w,sdl.clip.h,bpp,sdl_flags);
@@ -390,7 +408,7 @@ static SDL_Surface * GFX_SetupSurfaceScaled(Bit32u sdl_flags, Bit32u bpp) {
 }
 
 Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,GFX_CallBack_t callback) {
-	if (sdl.updating) 
+	if (sdl.updating)
 		GFX_EndUpdate( 0 );
 
 	sdl.draw.width=width;
@@ -401,7 +419,7 @@ Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,G
 
 	Bitu bpp=0;
 	Bitu retFlags = 0;
-	
+
 	if (sdl.blit.surface) {
 		SDL_FreeSurface(sdl.blit.surface);
 		sdl.blit.surface=0;
@@ -421,13 +439,13 @@ dosurface:
 				sdl.clip.x=(Sint16)((sdl.desktop.full.width-width)/2);
 				sdl.clip.y=(Sint16)((sdl.desktop.full.height-height)/2);
 				sdl.surface=SDL_SetVideoMode(sdl.desktop.full.width,sdl.desktop.full.height,bpp,
-					SDL_FULLSCREEN | ((flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE) | 
+					SDL_FULLSCREEN | ((flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE) |
 					(sdl.desktop.doublebuf ? SDL_DOUBLEBUF|SDL_ASYNCBLIT : 0) | SDL_HWPALETTE);
 				if (sdl.surface == NULL) E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",sdl.desktop.full.width,sdl.desktop.full.height,bpp,SDL_GetError());
 			} else {
 				sdl.clip.x=0;sdl.clip.y=0;
 				sdl.surface=SDL_SetVideoMode(width,height,bpp,
-					SDL_FULLSCREEN | ((flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE) | 
+					SDL_FULLSCREEN | ((flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE) |
 					(sdl.desktop.doublebuf ? SDL_DOUBLEBUF|SDL_ASYNCBLIT  : 0)|SDL_HWPALETTE);
 				if (sdl.surface == NULL)
 					E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",width,height,bpp,SDL_GetError());
@@ -451,7 +469,7 @@ dosurface:
 				sdl.surface = SDL_SetVideoMode(width,height,bpp,SDL_HWSURFACE);
 			}
 #endif
-			if (sdl.surface == NULL) 
+			if (sdl.surface == NULL)
 				E_Exit("Could not set windowed video mode %ix%i-%i: %s",width,height,bpp,SDL_GetError());
 		}
 		if (sdl.surface) {
@@ -569,7 +587,7 @@ dosurface:
 			glPixelDataRangeNV(GL_WRITE_PIXEL_DATA_RANGE_NV,width*height*4,sdl.opengl.framebuf);
 			glEnableClientState(GL_WRITE_PIXEL_DATA_RANGE_NV);
 		} else {
-#else 
+#else
 		{
 #endif
 			sdl.opengl.framebuf=malloc(width*height*4);		//32 bit color
@@ -597,7 +615,7 @@ dosurface:
 		glClear(GL_COLOR_BUFFER_BIT);
 		SDL_GL_SwapBuffers();
 		glClear(GL_COLOR_BUFFER_BIT);
-		glShadeModel (GL_FLAT); 
+		glShadeModel (GL_FLAT);
 		glDisable (GL_DEPTH_TEST);
 		glDisable (GL_LIGHTING);
 		glDisable(GL_CULL_FACE);
@@ -632,8 +650,11 @@ dosurface:
 	break;
 		}//OPENGL
 #endif	//C_OPENGL
+	default:
+		goto dosurface;
+		break;
 	}//CASE
-	if (retFlags) 
+	if (retFlags)
 		GFX_Start();
 	if (!sdl.mouse.autoenable) SDL_ShowCursor(sdl.mouse.autolock?SDL_DISABLE:SDL_ENABLE);
 	return retFlags;
@@ -676,7 +697,7 @@ static void SwitchFullScreen(bool pressed) {
 
 
 bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
-	if (!sdl.active || sdl.updating) 
+	if (!sdl.active || sdl.updating)
 		return false;
 	switch (sdl.desktop.type) {
 	case SCREEN_SURFACE:
@@ -719,14 +740,18 @@ bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
 		sdl.updating=true;
 		return true;
 #endif
+	default:
+		break;
 	}
 	return false;
 }
 
 
 void GFX_EndUpdate( const Bit16u *changedLines ) {
+#if (HAVE_DDRAW_H) && defined(WIN32)
 	int ret;
-	if (!sdl.updating) 
+#endif
+	if (!sdl.updating)
 		return;
 	sdl.updating=false;
 	switch (sdl.desktop.type) {
@@ -753,7 +778,7 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 					rect->h = changedLines[index];
 #if 0
 					if (rect->h + rect->y > sdl.surface->h) {
-						LOG_MSG("WTF");
+						LOG_MSG("WTF %d +  %d  >%d",rect->h,rect->y,sdl.surface->h);
 					}
 #endif
 					y += changedLines[index];
@@ -793,7 +818,7 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 #if defined(NVIDIA_PixelDataRange)
 		if (sdl.opengl.pixel_data_range) {
             glBindTexture(GL_TEXTURE_2D, sdl.opengl.texture);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
 					sdl.draw.width, sdl.draw.height, GL_BGRA_EXT,
 					GL_UNSIGNED_INT_8_8_8_8_REV, sdl.opengl.framebuf);
 			glCallList(sdl.opengl.displaylist);
@@ -809,7 +834,7 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 				} else {
 					Bit8u *pixels = (Bit8u *)sdl.opengl.framebuf + y * sdl.opengl.pitch;
 					Bitu height = changedLines[index];
-					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, 
+					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y,
 						sdl.draw.width, height, GL_BGRA_EXT,
 						GL_UNSIGNED_INT_8_8_8_8_REV, pixels );
 					y += height;
@@ -821,7 +846,8 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 		}
 		break;
 #endif
-
+	default:
+		break;
 	}
 }
 
@@ -864,7 +890,7 @@ Bitu GFX_GetRGB(Bit8u red,Bit8u green,Bit8u blue) {
 }
 
 void GFX_Stop() {
-	if (sdl.updating) 
+	if (sdl.updating)
 		GFX_EndUpdate( 0 );
 	sdl.active=false;
 }
@@ -873,7 +899,7 @@ void GFX_Start() {
 	sdl.active=true;
 }
 
-static void GUI_ShutDown(Section * sec) {
+static void GUI_ShutDown(Section * /*sec*/) {
 	GFX_Stop();
 	if (sdl.draw.callback) (sdl.draw.callback)( GFX_CallBackStop );
 	if (sdl.mouse.locked) GFX_CaptureMouse();
@@ -889,10 +915,10 @@ static void KillSwitch(bool pressed) {
 static void SetPriority(PRIORITY_LEVELS level) {
 
 #if C_SET_PRIORITY
-// Do nothing if priorties are not the same and not root, else the highest 
+// Do nothing if priorties are not the same and not root, else the highest
 // priority can not be set as users can only lower priority (not restore it)
 
-	if((sdl.priority.focus != sdl.priority.nofocus ) && 
+	if((sdl.priority.focus != sdl.priority.nofocus ) &&
 		(getuid()!=0) ) return;
 
 #endif
@@ -938,10 +964,32 @@ static void SetPriority(PRIORITY_LEVELS level) {
 	}
 }
 
+extern Bit8u int10_font_14[256 * 14];
+static void OutputString(Bitu x,Bitu y,const char * text,Bit32u color,Bit32u color2,SDL_Surface * output_surface) {
+	Bit32u * draw=(Bit32u*)(((Bit8u *)output_surface->pixels)+((y)*output_surface->pitch))+x;
+	while (*text) {
+		Bit8u * font=&int10_font_14[(*text)*14];
+		Bitu i,j;
+		Bit32u * draw_line=draw;
+		for (i=0;i<14;i++) {
+			Bit8u map=*font++;
+			for (j=0;j<8;j++) {
+				if (map & 0x80) *((Bit32u*)(draw_line+j))=color; else *((Bit32u*)(draw_line+j))=color2;
+				map<<=1;
+			}
+			draw_line+=output_surface->pitch/4;
+		}
+		text++;
+		draw+=8;
+	}
+}
+
 static unsigned char logo[32*32*4]= {
 #include "dosbox_logo.h"
 };
+#include "dosbox_splash.h"
 
+//extern void UI_Run(bool);
 static void GUI_StartUp(Section * sec) {
 	sec->AddDestroyFunction(&GUI_ShutDown);
 	Section_prop * section=static_cast<Section_prop *>(sec);
@@ -961,48 +1009,29 @@ static void GUI_StartUp(Section * sec) {
 
 	sdl.desktop.fullscreen=section->Get_bool("fullscreen");
 	sdl.wait_on_error=section->Get_bool("waitonerror");
-	const char * priority=section->Get_string("priority");
-	if (priority && priority[0]) {
-		Bitu next;
-		if (!strncasecmp(priority,"lowest",6)) {
-			sdl.priority.focus=PRIORITY_LEVEL_LOWEST;next=6;
-		} else if (!strncasecmp(priority,"lower",5)) {
-			sdl.priority.focus=PRIORITY_LEVEL_LOWER;next=5;
-		} else if (!strncasecmp(priority,"normal",6)) {
-			sdl.priority.focus=PRIORITY_LEVEL_NORMAL;next=6;
-		} else if (!strncasecmp(priority,"higher",6)) {
-			sdl.priority.focus=PRIORITY_LEVEL_HIGHER;next=6;
-		} else if (!strncasecmp(priority,"highest",7)) {
-			sdl.priority.focus=PRIORITY_LEVEL_HIGHEST;next=7;
-		} else {
-			next=0;sdl.priority.focus=PRIORITY_LEVEL_HIGHER;
-		}
-		priority=&priority[next];
-		if (next && priority[0]==',' && priority[1]) {
-			priority++;
-			if (!strncasecmp(priority,"lowest",6)) {
-				sdl.priority.nofocus=PRIORITY_LEVEL_LOWEST;
-			} else if (!strncasecmp(priority,"lower",5)) {
-				sdl.priority.nofocus=PRIORITY_LEVEL_LOWER;
-			} else if (!strncasecmp(priority,"normal",6)) {
-				sdl.priority.nofocus=PRIORITY_LEVEL_NORMAL;
-			} else if (!strncasecmp(priority,"higher",6)) {
-				sdl.priority.nofocus=PRIORITY_LEVEL_HIGHER;
-			} else if (!strncasecmp(priority,"highest",7)) {
-				sdl.priority.nofocus=PRIORITY_LEVEL_HIGHEST;
-			} else if (!strncasecmp(priority,"pause",5)) {
-				/* we only check for pause here, because it makes no sense
-				 * for DOSBox to be paused while it has focus
-				 */
-				sdl.priority.nofocus=PRIORITY_LEVEL_PAUSE;
-			} else {
-				sdl.priority.nofocus=PRIORITY_LEVEL_NORMAL;
-			}
-		} else sdl.priority.nofocus=sdl.priority.focus;
-	} else {
-		sdl.priority.focus=PRIORITY_LEVEL_HIGHER;
-		sdl.priority.nofocus=PRIORITY_LEVEL_NORMAL;
+
+	Prop_multival* p=section->Get_multival("priority");
+	std::string focus = p->GetSection()->Get_string("active");
+	std::string notfocus = p->GetSection()->Get_string("inactive");
+
+	if      (focus == "lowest")  { sdl.priority.focus = PRIORITY_LEVEL_LOWEST;  }
+	else if (focus == "lower")   { sdl.priority.focus = PRIORITY_LEVEL_LOWER;   }
+	else if (focus == "normal")  { sdl.priority.focus = PRIORITY_LEVEL_NORMAL;  }
+	else if (focus == "higher")  { sdl.priority.focus = PRIORITY_LEVEL_HIGHER;  }
+	else if (focus == "highest") { sdl.priority.focus = PRIORITY_LEVEL_HIGHEST; }
+
+	if      (notfocus == "lowest")  { sdl.priority.nofocus=PRIORITY_LEVEL_LOWEST;  }
+	else if (notfocus == "lower")   { sdl.priority.nofocus=PRIORITY_LEVEL_LOWER;   }
+	else if (notfocus == "normal")  { sdl.priority.nofocus=PRIORITY_LEVEL_NORMAL;  }
+	else if (notfocus == "higher")  { sdl.priority.nofocus=PRIORITY_LEVEL_HIGHER;  }
+	else if (notfocus == "highest") { sdl.priority.nofocus=PRIORITY_LEVEL_HIGHEST; }
+	else if (notfocus == "pause")   {
+		/* we only check for pause here, because it makes no sense
+		 * for DOSBox to be paused while it has focus
+		 */
+		sdl.priority.nofocus=PRIORITY_LEVEL_PAUSE;
 	}
+
 	SetPriority(sdl.priority.focus); //Assume focus on startup
 	sdl.mouse.locked=false;
 	mouselocked=false; //Global for mapper
@@ -1020,8 +1049,8 @@ static void GUI_StartUp(Section * sec) {
 			char* height = const_cast<char*>(strchr(fullresolution,'x'));
 			if(height && * height) {
 				*height = 0;
-				sdl.desktop.full.height = atoi(height+1);
-				sdl.desktop.full.width  = atoi(res);
+				sdl.desktop.full.height = (Bit16u)atoi(height+1);
+				sdl.desktop.full.width  = (Bit16u)atoi(res);
 			}
 		}
 	}
@@ -1037,23 +1066,23 @@ static void GUI_StartUp(Section * sec) {
 			char* height = const_cast<char*>(strchr(windowresolution,'x'));
 			if(height && *height) {
 				*height = 0;
-				sdl.desktop.window.height = atoi(height+1);
-				sdl.desktop.window.width  = atoi(res);
+				sdl.desktop.window.height = (Bit16u)atoi(height+1);
+				sdl.desktop.window.width  = (Bit16u)atoi(res);
 			}
 		}
 	}
 	sdl.desktop.doublebuf=section->Get_bool("fulldouble");
 	if (!sdl.desktop.full.width) {
 #ifdef WIN32
-		sdl.desktop.full.width=GetSystemMetrics(SM_CXSCREEN);
-#else	
+		sdl.desktop.full.width=(Bit16u)GetSystemMetrics(SM_CXSCREEN);
+#else
 		sdl.desktop.full.width=1024;
 #endif
 	}
 	if (!sdl.desktop.full.height) {
 #ifdef WIN32
-		sdl.desktop.full.height=GetSystemMetrics(SM_CYSCREEN);
-#else	
+		sdl.desktop.full.height=(Bit16u)GetSystemMetrics(SM_CYSCREEN);
+#else
 		sdl.desktop.full.height=768;
 #endif
 	}
@@ -1061,26 +1090,30 @@ static void GUI_StartUp(Section * sec) {
 	if (!sdl.mouse.autoenable) SDL_ShowCursor(SDL_DISABLE);
 	sdl.mouse.autolock=false;
 	sdl.mouse.sensitivity=section->Get_int("sensitivity");
-	const char * output=section->Get_string("output");
-	if (!strcasecmp(output,"surface")) {
+	std::string output=section->Get_string("output");
+
+	/* Setup Mouse correctly if fullscreen */
+	if(sdl.desktop.fullscreen) GFX_CaptureMouse();
+
+	if (output == "surface") {
 		sdl.desktop.want_type=SCREEN_SURFACE;
 #if (HAVE_DDRAW_H) && defined(WIN32)
-	} else if (!strcasecmp(output,"ddraw")) {
+	} else if (output == "ddraw") {
 		sdl.desktop.want_type=SCREEN_SURFACE_DDRAW;
 #endif
-	} else if (!strcasecmp(output,"overlay")) {
+	} else if (output == "overlay") {
 		sdl.desktop.want_type=SCREEN_OVERLAY;
 #if C_OPENGL
-	} else if (!strcasecmp(output,"opengl")) {
+	} else if (output == "opengl") {
 		sdl.desktop.want_type=SCREEN_OPENGL;
 		sdl.opengl.bilinear=true;
-	} else if (!strcasecmp(output,"openglnb")) {
+	} else if (output == "openglnb") {
 		sdl.desktop.want_type=SCREEN_OPENGL;
 		sdl.opengl.bilinear=false;
 #endif
 	} else {
-		LOG_MSG("SDL:Unsupported output device %s, switching back to surface",output);
-		sdl.desktop.want_type=SCREEN_SURFACE;
+		LOG_MSG("SDL:Unsupported output device %s, switching back to surface",output.c_str());
+		sdl.desktop.want_type=SCREEN_SURFACE;//SHOULDN'T BE POSSIBLE anymore
 	}
 
 	sdl.overlay=0;
@@ -1107,14 +1140,14 @@ static void GUI_StartUp(Section * sec) {
 #if defined(NVIDIA_PixelDataRange)
 		sdl.opengl.pixel_data_range=(strstr(gl_ext,"GL_NV_pixel_data_range") >0 ) &&
 			glPixelDataRangeNV && db_glAllocateMemoryNV && db_glFreeMemoryNV;
-		sdl.opengl.pixel_data_range = 0;					
+		sdl.opengl.pixel_data_range = 0;
 #endif
     	} else {
 		sdl.opengl.packed_pixel=sdl.opengl.paletted_texture=false;
 	}
 	}
 	} /* OPENGL is requested end */
-   
+
 #endif	//OPENGL
 	/* Initialize screen for first time */
 	sdl.surface=SDL_SetVideoMode(640,400,0,0);
@@ -1124,14 +1157,88 @@ static void GUI_StartUp(Section * sec) {
 		LOG_MSG("SDL:You are running in 24 bpp mode, this will slow down things!");
 	}
 	GFX_Stop();
-/* Get some Event handlers */
+	SDL_WM_SetCaption("DOSBox",VERSION);
+
+/* The endian part is intentionally disabled as somehow it produces correct results without according to rhoenie*/
+//#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+//    Bit32u rmask = 0xff000000;
+//    Bit32u gmask = 0x00ff0000;
+//    Bit32u bmask = 0x0000ff00;
+//#else
+    Bit32u rmask = 0x000000ff;
+    Bit32u gmask = 0x0000ff00;
+    Bit32u bmask = 0x00ff0000;
+//#endif
+
+/* Please leave the Splash screen stuff in working order in DOSBox. We spend a lot of time making DOSBox. */
+	SDL_Surface* splash_surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
+	if (splash_surf) {
+		SDL_FillRect(splash_surf, NULL, SDL_MapRGB(splash_surf->format, 0, 0, 0));
+
+		Bit8u* tmpbufp = new Bit8u[640*400*3];
+		GIMP_IMAGE_RUN_LENGTH_DECODE(tmpbufp,gimp_image.rle_pixel_data,640*400,3);
+		for (Bitu y=0; y<400; y++) {
+
+			Bit8u* tmpbuf = tmpbufp + y*640*3;
+			Bit32u * draw=(Bit32u*)(((Bit8u *)splash_surf->pixels)+((y)*splash_surf->pitch));
+			for (Bitu x=0; x<640; x++) {
+//#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+//				*draw++ = tmpbuf[x*3+2]+tmpbuf[x*3+1]*0x100+tmpbuf[x*3+0]*0x10000+0x00000000;
+//#else
+				*draw++ = tmpbuf[x*3+0]+tmpbuf[x*3+1]*0x100+tmpbuf[x*3+2]*0x10000+0x00000000;
+//#endif
+			}
+		}
+
+		bool exit_splash = false;
+
+		static Bitu max_splash_loop = 600;
+		static Bitu splash_fade = 100;
+		static bool use_fadeout = true;
+
+		for (Bit32u ct = 0,startticks = GetTicks();ct < max_splash_loop;ct = GetTicks()-startticks) {
+			SDL_Event evt;
+			while (SDL_PollEvent(&evt)) {
+				if (evt.type == SDL_QUIT) {
+					exit_splash = true;
+					break;
+				}
+			}
+			if (exit_splash) break;
+
+			if (ct<1) {
+				SDL_FillRect(sdl.surface, NULL, SDL_MapRGB(sdl.surface->format, 0, 0, 0));
+				SDL_SetAlpha(splash_surf, SDL_SRCALPHA,255);
+				SDL_BlitSurface(splash_surf, NULL, sdl.surface, NULL);
+				SDL_Flip(sdl.surface);
+			} else if (ct>=max_splash_loop-splash_fade) {
+				if (use_fadeout) {
+					SDL_FillRect(sdl.surface, NULL, SDL_MapRGB(sdl.surface->format, 0, 0, 0));
+					SDL_SetAlpha(splash_surf, SDL_SRCALPHA, (Bit8u)((max_splash_loop-1-ct)*255/(splash_fade-1)));
+					SDL_BlitSurface(splash_surf, NULL, sdl.surface, NULL);
+					SDL_Flip(sdl.surface);
+				}
+			}
+
+		}
+
+		if (use_fadeout) {
+			SDL_FillRect(sdl.surface, NULL, SDL_MapRGB(sdl.surface->format, 0, 0, 0));
+			SDL_Flip(sdl.surface);
+		}
+		SDL_FreeSurface(splash_surf);
+		delete [] tmpbufp;
+
+	}
+
+	/* Get some Event handlers */
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");
 	MAPPER_AddHandler(CaptureMouse,MK_f10,MMOD1,"capmouse","Cap Mouse");
 	MAPPER_AddHandler(SwitchFullScreen,MK_return,MMOD2,"fullscr","Fullscreen");
 #if C_DEBUG
 	/* Pause binds with activate-debugger */
 #else
-	MAPPER_AddHandler(PauseDOSBox,MK_pause,MMOD2,"pause","Pause");
+	MAPPER_AddHandler(&PauseDOSBox, MK_pause, MMOD2, "pause", "Pause");
 #endif
 	/* Get Keyboard state of numlock and capslock */
 	SDLMod keystate = SDL_GetModState();
@@ -1149,7 +1256,7 @@ void Mouse_AutoLock(bool enable) {
 }
 
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
-	if (sdl.mouse.locked || !sdl.mouse.autoenable) 
+	if (sdl.mouse.locked || !sdl.mouse.autoenable)
 		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100.0f,
 						  (float)motion->yrel*sdl.mouse.sensitivity/100.0f,
 						  (float)(motion->x-sdl.clip.x)/(sdl.clip.w-1)*sdl.mouse.sensitivity/100.0f,
@@ -1197,8 +1304,11 @@ static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 	}
 }
 
-static Bit8u laltstate = SDL_KEYUP;
-static Bit8u raltstate = SDL_KEYUP;
+void GFX_LosingFocus(void) {
+	sdl.laltstate=SDL_KEYUP;
+	sdl.raltstate=SDL_KEYUP;
+	MAPPER_LosingFocus();
+}
 
 void GFX_Events() {
 	SDL_Event event;
@@ -1219,6 +1329,7 @@ void GFX_Events() {
 					if (sdl.desktop.fullscreen && !sdl.mouse.locked)
 						GFX_CaptureMouse();
 					SetPriority(sdl.priority.focus);
+					CPU_Disable_SkipAutoAdjust();
 				} else {
 					if (sdl.mouse.locked) {
 #ifdef WIN32
@@ -1231,7 +1342,8 @@ void GFX_Events() {
 						GFX_CaptureMouse();
 					}
 					SetPriority(sdl.priority.nofocus);
-					MAPPER_LosingFocus();
+					GFX_LosingFocus();
+					CPU_Enable_SkipAutoAdjust();
 				}
 			}
 
@@ -1250,17 +1362,17 @@ void GFX_Events() {
 
 					GFX_SetTitle(-1,-1,true);
 					KEYBOARD_ClrBuffer();
-					SDL_Delay(500);
-					while (SDL_PollEvent(&ev)) {
+//					SDL_Delay(500);
+//					while (SDL_PollEvent(&ev)) {
 						// flush event queue.
-					}
+//					}
 
 					while (paused) {
 						// WaitEvent waits for an event rather than polling, so CPU usage drops to zero
 						SDL_WaitEvent(&ev);
 
 						switch (ev.type) {
-						case SDL_QUIT: throw(0); break; // a bit redundant at linux at least as the active events gets before the quit event. 
+						case SDL_QUIT: throw(0); break; // a bit redundant at linux at least as the active events gets before the quit event.
 						case SDL_ACTIVEEVENT:     // wait until we get window focus back
 							if (ev.active.state & (SDL_APPINPUTFOCUS | SDL_APPACTIVE)) {
 								// We've got focus back, so unpause and break out of the loop
@@ -1302,10 +1414,10 @@ void GFX_Events() {
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
 			// ignore event alt+tab
-			if (event.key.keysym.sym==SDLK_LALT) laltstate = event.key.type;
-			if (event.key.keysym.sym==SDLK_RALT) raltstate = event.key.type;
+			if (event.key.keysym.sym==SDLK_LALT) sdl.laltstate = event.key.type;
+			if (event.key.keysym.sym==SDLK_RALT) sdl.raltstate = event.key.type;
 			if (((event.key.keysym.sym==SDLK_TAB)) &&
-				((laltstate==SDL_KEYDOWN) || (raltstate==SDL_KEYDOWN))) break;
+				((sdl.laltstate==SDL_KEYDOWN) || (sdl.raltstate==SDL_KEYDOWN))) break;
 #endif
 		default:
 			void MAPPER_CheckEvent(SDL_Event * event);
@@ -1334,7 +1446,6 @@ static BOOL WINAPI ConsoleEventHandler(DWORD event) {
 /* static variable to show wether there is not a valid stdout.
  * Fixes some bugs when -noconsole is used in a read only directory */
 static bool no_stdout = false;
-
 void GFX_ShowMsg(char const* format,...) {
 	char buf[512];
 	va_list msg;
@@ -1342,14 +1453,212 @@ void GFX_ShowMsg(char const* format,...) {
 	vsprintf(buf,format,msg);
         strcat(buf,"\n");
 	va_end(msg);
-	if(!no_stdout) printf(buf);       
-};
+	if(!no_stdout) printf("%s",buf); //Else buf is parsed again.
+}
 
+
+void Config_Add_SDL() {
+	Section_prop * sdl_sec=control->AddSection_prop("sdl",&GUI_StartUp);
+	sdl_sec->AddInitFunction(&MAPPER_StartUp);
+	Prop_bool* Pbool;
+	Prop_string* Pstring;
+	Prop_int* Pint;
+	Prop_multival* Pmulti;
+
+	Pbool = sdl_sec->Add_bool("fullscreen",Property::Changeable::Always,false);
+	Pbool->Set_help("Start dosbox directly in fullscreen.");
+
+	Pbool = sdl_sec->Add_bool("fulldouble",Property::Changeable::Always,false);
+	Pbool->Set_help("Use double buffering in fullscreen.");
+
+	Pstring = sdl_sec->Add_string("fullresolution",Property::Changeable::Always,"original");
+	Pstring->Set_help("What resolution to use for fullscreen: original or fixed size (e.g. 1024x768).");
+
+	Pstring = sdl_sec->Add_string("windowresolution",Property::Changeable::Always,"original");
+	Pstring->Set_help("Scale the window to this size IF the output device supports hardware scaling.");
+
+	const char* outputs[] = {
+		"surface", "overlay",
+#if C_OPENGL
+		"opengl", "openglnb",
+#endif
+#if (HAVE_DDRAW_H) && defined(WIN32)
+		"ddraw",
+#endif
+		0 };
+	Pstring = sdl_sec->Add_string("output",Property::Changeable::Always,"surface");
+	Pstring->Set_help("What video system to use for output.");
+	Pstring->Set_values(outputs);
+
+	Pbool = sdl_sec->Add_bool("autolock",Property::Changeable::Always,true);
+	Pbool->Set_help("Mouse will automatically lock, if you click on the screen.");
+
+	Pint = sdl_sec->Add_int("sensitivity",Property::Changeable::Always,100);
+	Pint->SetMinMax(1,1000);
+	Pint->Set_help("Mouse sensitivity.");
+
+	Pbool = sdl_sec->Add_bool("waitonerror",Property::Changeable::Always, true);
+	Pbool->Set_help("Wait before closing the console if dosbox has an error.");
+
+	Pmulti = sdl_sec->Add_multi("priority", Property::Changeable::Always, ",");
+	Pmulti->SetValue("higher,normal");
+	Pmulti->Set_help("Priority levels for dosbox. Second entry behind the comma is for when dosbox is not focused/minimized. (pause is only valid for the second entry)");
+
+	const char* actt[] = { "lowest", "lower", "normal", "higher", "highest", "pause", 0};
+	Pstring = Pmulti->GetSection()->Add_string("active",Property::Changeable::Always,"higher");
+	Pstring->Set_values(actt);
+
+	const char* inactt[] = { "lowest", "lower", "normal", "higher", "highest", "pause", 0};
+	Pstring = Pmulti->GetSection()->Add_string("inactive",Property::Changeable::Always,"normal");
+	Pstring->Set_values(inactt);
+
+	Pstring = sdl_sec->Add_path("mapperfile",Property::Changeable::Always,"mapper.txt");
+	Pstring->Set_help("File used to load/save the key/event mappings from.");
+
+	Pbool = sdl_sec->Add_bool("usescancodes",Property::Changeable::Always,true);
+	Pbool->Set_help("Avoid usage of symkeys, might not work on all operating systems.");
+}
+
+static void show_warning(char const * const message) {
+	bool textonly = true;
+#ifdef WIN32
+	textonly = false;
+	if ( !sdl.inited && SDL_Init(SDL_INIT_VIDEO|SDL_INIT_NOPARACHUTE) < 0 ) textonly = true;
+	sdl.inited = true;
+#endif
+	printf(message);
+	if(textonly) return;
+	if(!sdl.surface) sdl.surface = SDL_SetVideoMode(640,400,0,0);
+	if(!sdl.surface) return;
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	Bit32u rmask = 0xff000000;
+	Bit32u gmask = 0x00ff0000;
+	Bit32u bmask = 0x0000ff00;
+#else
+	Bit32u rmask = 0x000000ff;
+	Bit32u gmask = 0x0000ff00;                    
+	Bit32u bmask = 0x00ff0000;
+#endif
+	SDL_Surface* splash_surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
+	if (!splash_surf) return;
+
+	int x = 120,y = 20;
+	std::string m(message),m2;
+	std::string::size_type a,b,c,d;
+   
+	while(m.size()) { //Max 50 characters. break on space before or on a newline
+		c = m.find('\n');
+		d = m.rfind(' ',50);
+		if(c>d) a=b=d; else a=b=c;
+		if( a != std::string::npos) b++; 
+		m2 = m.substr(0,a); m.erase(0,b);
+		OutputString(x,y,m2.c_str(),0xffffffff,0,splash_surf);
+		y += 20;
+	}
+   
+	SDL_BlitSurface(splash_surf, NULL, sdl.surface, NULL);
+	SDL_Flip(sdl.surface);
+	SDL_Delay(10000);
+}
+   
+static void launcheditor() {
+	std::string path,file;
+	Cross::CreatePlatformConfigDir(path);
+	Cross::GetPlatformConfigName(file);
+	path += file;
+	FILE* f = fopen(path.c_str(),"r");
+	if(!f && !control->PrintConfig(path.c_str())) {
+		printf("tried creating %s. but failed.\n",path.c_str());
+		exit(1);
+	}
+	if(f) fclose(f);
+/*	if(edit.empty()) {
+		printf("no editor specified.\n");
+		exit(1);
+	}*/
+	std::string edit;
+	while(control->cmdline->FindString("-editconf",edit,true)) //Loop until one succeeds
+		execlp(edit.c_str(),edit.c_str(),path.c_str(),(char*) 0);
+	//if you get here the launching failed!
+	printf("can't find editor(s) specified at the command line.\n");
+	exit(1);
+}
+static void launchcaptures(std::string const& edit) {
+	std::string path,file;
+	Section* t = control->GetSection("dosbox");
+	if(t) file = t->GetPropValue("captures");
+	if(!t || file == NO_SUCH_PROPERTY) {
+		printf("Config system messed up.\n");
+		exit(1);
+	}
+	Cross::CreatePlatformConfigDir(path);
+	path += file;
+	Cross::CreateDir(path);
+	struct stat cstat;
+	if(stat(path.c_str(),&cstat) || (cstat.st_mode & S_IFDIR) == 0) {
+		printf("%s doesn't exists or isn't a directory.\n",path.c_str());
+		exit(1);
+	}
+/*	if(edit.empty()) {
+		printf("no editor specified.\n");
+		exit(1);
+	}*/
+
+	execlp(edit.c_str(),edit.c_str(),path.c_str(),(char*) 0);
+	//if you get here the launching failed!
+	printf("can't find filemanager %s\n",edit.c_str());
+	exit(1);
+}
+
+static void printconfiglocation() {
+	std::string path,file;
+	Cross::CreatePlatformConfigDir(path);
+	Cross::GetPlatformConfigName(file);
+	path += file;
+     
+	FILE* f = fopen(path.c_str(),"r");
+	if(!f && !control->PrintConfig(path.c_str())) {
+		printf("tried creating %s. but failed",path.c_str());
+		exit(1);
+	}
+	if(f) fclose(f);
+	printf("%s\n",path.c_str());
+	exit(0);
+}
+
+static void eraseconfigfile() {
+	FILE* f = fopen("dosbox.conf","r");
+	if(f) {
+		fclose(f);
+		show_warning("Warning: dosbox.conf exists in current working directory.\nThis will override the configuration file at runtime.\n");
+	}
+	std::string path,file;
+	Cross::GetPlatformConfigDir(path);
+	Cross::GetPlatformConfigName(file);
+	path += file;
+	f = fopen(path.c_str(),"r");
+	if(!f) exit(0);
+	fclose(f);
+	unlink(path.c_str());
+	exit(0);
+}
+
+
+
+//extern void UI_Init(void);
 int main(int argc, char* argv[]) {
 	try {
 		CommandLine com_line(argc,argv);
 		Config myconf(&com_line);
 		control=&myconf;
+		/* Init the configuration system and add default values */
+		Config_Add_SDL();
+		DOSBOX_Init();
+
+		std::string editor;
+		if(control->cmdline->FindString("-editconf",editor,false)) launcheditor();
+		if(control->cmdline->FindString("-opencaptures",editor,true)) launchcaptures(editor);
+		if(control->cmdline->FindExist("-eraseconf")) eraseconfigfile();
 
 		/* Can't disable the console with debugger enabled */
 #if defined(WIN32) && !(C_DEBUG)
@@ -1373,15 +1682,16 @@ int main(int argc, char* argv[]) {
 			SetConsoleTitle("DOSBox Status Window");
 		}
 #endif  //defined(WIN32) && !(C_DEBUG)
-		if (control->cmdline->FindExist("-version") || 
+		if (control->cmdline->FindExist("-version") ||
 		    control->cmdline->FindExist("--version") ) {
-			printf("\nDOSBox version %s, copyright 2002-2007 DOSBox Team.\n\n",VERSION);
+			printf("\nDOSBox version %s, copyright 2002-2009 DOSBox Team.\n\n",VERSION);
 			printf("DOSBox is written by the DOSBox Team (See AUTHORS file))\n");
 			printf("DOSBox comes with ABSOLUTELY NO WARRANTY.  This is free software,\n");
 			printf("and you are welcome to redistribute it under certain conditions;\n");
 			printf("please read the COPYING file thoroughly before doing so.\n\n");
 			return 0;
 		}
+		if(control->cmdline->FindExist("-printconf")) printconfiglocation();
 
 #if C_DEBUG
 		DEBUG_SetupConsole();
@@ -1402,19 +1712,24 @@ int main(int argc, char* argv[]) {
 
 	/* Display Welcometext in the console */
 	LOG_MSG("DOSBox version %s",VERSION);
-	LOG_MSG("Copyright 2002-2007 DOSBox Team, published under GNU GPL.");
+	LOG_MSG("Copyright 2002-2009 DOSBox Team, published under GNU GPL.");
 	LOG_MSG("---");
 
 	/* Init SDL */
+	putenv(const_cast<char*>("SDL_DISABLE_LOCK_KEYS=1")); //Workaround debian/ubuntu fixes for SDL.
 	if ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_CDROM
 		|SDL_INIT_NOPARACHUTE
 		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());
+	sdl.inited = true;
 
 #ifndef DISABLE_JOYSTICK
 	//Initialise Joystick seperately. This way we can warn when it fails instead
 	//of exiting the application
 	if( SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0 ) LOG_MSG("Failed to init joystick support");
 #endif
+
+	sdl.laltstate = SDL_KEYUP;
+	sdl.raltstate = SDL_KEYUP;
 
 #if defined (WIN32)
 #if SDL_VERSION_ATLEAST(1, 2, 10)
@@ -1445,67 +1760,54 @@ int main(int argc, char* argv[]) {
 			if (strcmp(sdl_drv_name,"windib")==0) LOG_MSG("SDL_Init: Starting up with SDL windib video driver.\n          Try to update your video card and directx drivers!");
 		}
 #endif
-		sdl.num_joysticks=SDL_NumJoysticks();
-		Section_prop * sdl_sec=control->AddSection_prop("sdl",&GUI_StartUp);
-		sdl_sec->AddInitFunction(&MAPPER_StartUp);
-		sdl_sec->Add_bool("fullscreen",false);
-		sdl_sec->Add_bool("fulldouble",false);
-		sdl_sec->Add_string("fullresolution","original");
-		sdl_sec->Add_string("windowresolution","original");
-		sdl_sec->Add_string("output","surface");
-		sdl_sec->Add_bool("autolock",true);
-		sdl_sec->Add_int("sensitivity",100);
-		sdl_sec->Add_bool("waitonerror",true);
-		sdl_sec->Add_string("priority","higher,normal");
-		sdl_sec->Add_string("mapperfile","mapper.txt");
-		sdl_sec->Add_bool("usescancodes",true);
+	sdl.num_joysticks=SDL_NumJoysticks();
 
-		MSG_Add("SDL_CONFIGFILE_HELP",
-			"fullscreen -- Start dosbox directly in fullscreen.\n"
-			"fulldouble -- Use double buffering in fullscreen.\n"
-			"fullresolution -- What resolution to use for fullscreen: original or fixed size (e.g. 1024x768).\n"
-			"windowresolution -- Scale the window to this size IF the output device supports hardware scaling.\n"
-			"output -- What to use for output: surface,overlay"
-#if C_OPENGL
-			",opengl,openglnb"
-#endif
-#if (HAVE_DDRAW_H) && defined(WIN32)
-			",ddraw"
-#endif
-			".\n"
-			"autolock -- Mouse will automatically lock, if you click on the screen.\n"
-			"sensitiviy -- Mouse sensitivity.\n"
-			"waitonerror -- Wait before closing the console if dosbox has an error.\n"
-			"priority -- Priority levels for dosbox: lowest,lower,normal,higher,highest,pause (when not focussed).\n"
-			"            Second entry behind the comma is for when dosbox is not focused/minimized.\n"
-			"mapperfile -- File used to load/save the key/event mappings from.\n"
-			"usescancodes -- Avoid usage of symkeys, might not work on all operating systems.\n"
-			);
-		/* Init all the dosbox subsystems */
-		DOSBOX_Init();
-		std::string config_file;
-		bool parsed_anyconfigfile = false;
-		// First parse the configfile in the $HOME directory
-		if ((getenv("HOME") != NULL)) {
-			config_file = (std::string)getenv("HOME") + 
-				      (std::string)DEFAULT_CONFIG_FILE;
-			if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
-		}
-		// Add extra settings from dosbox.conf in the local directory if there is no configfile specified at the commandline
-		if (!control->cmdline->FindString("-conf",config_file,true)) config_file="dosbox.conf";
+	/* Parse configuration files */
+	std::string config_file,config_path;
+	bool parsed_anyconfigfile = false;
+	//First Parse -conf switches
+	while(control->cmdline->FindString("-conf",config_file,true))
 		if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
-		// Add extra settings from additional configfiles at the commandline
-		while(control->cmdline->FindString("-conf",config_file,true))
-			if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
-		// Give a message if no configfile whatsoever was found.
-		if(!parsed_anyconfigfile) LOG_MSG("CONFIG: Using default settings. Create a configfile to change them");
-	
+
+	//if none found => parse localdir conf
+	config_file = "dosbox.conf";
+	if (!parsed_anyconfigfile && control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
+
+	//if none found => parse userlevel conf
+	if(!parsed_anyconfigfile) {
+		config_file.clear();
+		Cross::GetPlatformConfigDir(config_path);
+		Cross::GetPlatformConfigName(config_file);
+		config_path += config_file;
+		if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
+	}
+
+	if(!parsed_anyconfigfile) {
+		//Try to create the userlevel configfile.
+		config_file.clear();
+		Cross::CreatePlatformConfigDir(config_path);
+		Cross::GetPlatformConfigName(config_file);
+		config_path += config_file;
+		if(control->PrintConfig(config_path.c_str())) {
+			LOG_MSG("CONFIG: Generating default configuration.\nWriting it to %s",config_path.c_str());
+			//Load them as well. Makes relative paths much easier
+			control->ParseConfigFile(config_path.c_str());
+		} else {
+			LOG_MSG("CONFIG: Using default settings. Create a configfile to change them");
+		}
+	}
+
+
 #if (ENVIRON_LINKED)
 		control->ParseEnv(environ);
 #endif
+//		UI_Init();
+//		if (control->cmdline->FindExist("-startui")) UI_Run(false);
 		/* Init all the sections */
 		control->Init();
 		/* Some extra SDL Functions */
+		Section_prop * sdl_sec=static_cast<Section_prop *>(control->GetSection("sdl"));
+
 		if (control->cmdline->FindExist("-fullscreen") || sdl_sec->Get_bool("fullscreen")) {
 			if(!sdl.desktop.fullscreen) { //only switch if not allready in fullscreen
 				GFX_SwitchFullScreen();
@@ -1514,8 +1816,7 @@ int main(int argc, char* argv[]) {
 
 		/* Init the keyMapper */
 		MAPPER_Init();
-		if (control->cmdline->FindExist("-startmapper")) MAPPER_Run(true);
-
+		if (control->cmdline->FindExist("-startmapper")) MAPPER_Run(false);
 		/* Start up main machine */
 		control->StartUp();
 		/* Shutdown everything */
@@ -1530,16 +1831,29 @@ int main(int argc, char* argv[]) {
 			fgetc(stdin);
 #elif defined(WIN32)
 			Sleep(5000);
-#endif 
+#endif
 		}
 
 	}
-	catch (int){ 
+	catch (int){
 		;//nothing pressed killswitch
 	}
 	catch(...){
-		throw;//dunno what happened. rethrow for sdl to catch 
+		//Force visible mouse to end user. Somehow this sometimes doesn't happen
+		SDL_WM_GrabInput(SDL_GRAB_OFF);
+		SDL_ShowCursor(SDL_ENABLE);
+		throw;//dunno what happened. rethrow for sdl to catch
 	}
+	//Force visible mouse to end user. Somehow this sometimes doesn't happen
+	SDL_WM_GrabInput(SDL_GRAB_OFF);
+	SDL_ShowCursor(SDL_ENABLE);
+
 	SDL_Quit();//Let's hope sdl will quit as well when it catches an exception
 	return 0;
-};
+}
+
+void GFX_GetSize(int &width, int &height, bool &fullscreen) {
+	width = sdl.draw.width;
+	height = sdl.draw.height;
+	fullscreen = sdl.desktop.fullscreen;
+}

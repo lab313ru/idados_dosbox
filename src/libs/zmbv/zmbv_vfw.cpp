@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -96,10 +96,10 @@ static BOOL CALLBACK AboutDialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
       EndDialog(hwndDlg, 0);
       break;
     case IDC_HOMEPAGE:
-      ShellExecute(NULL, NULL, "http://dosbox.sf.net", NULL, NULL, SW_SHOW);
+      ShellExecute(NULL, NULL, "http://www.dosbox.com", NULL, NULL, SW_SHOW);
       break;
     case IDC_EMAIL:
-      ShellExecute(NULL, NULL, "mailto:db.crew@gmail.com", NULL, NULL, SW_SHOW);
+      ShellExecute(NULL, NULL, "mailto:dosbox.crew@gmail.com", NULL, NULL, SW_SHOW);
       break;
     }
   }

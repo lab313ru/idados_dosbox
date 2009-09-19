@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: vga_crtc.cpp,v 1.34 2009-03-18 18:08:16 c2woody Exp $ */
 
 #include <stdlib.h>
 #include "dosbox.h"
@@ -124,7 +126,8 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 	case 0x08:	/* Preset Row Scan Register */
 		crtc(preset_row_scan)=val;
 		vga.config.hlines_skip=val&31;
-		vga.config.bytes_skip=(val>>5)&3;
+		if (IS_VGA_ARCH) vga.config.bytes_skip=(val>>5)&3;
+		else vga.config.bytes_skip=0;
 //		LOG_DEBUG("Skip lines %d bytes %d",vga.config.hlines_skip,vga.config.bytes_skip);
 		/*
 			0-4	Number of lines we have scrolled down in the first character row.
@@ -135,11 +138,27 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 		*/
 		break;
 	case 0x09: /* Maximum Scan Line Register */
-		vga.config.line_compare=(vga.config.line_compare & 0x5ff)|(val&0x40)<<3;
-		if ((vga.crtc.maximum_scan_line ^ val) & 0xbf) {
-			crtc(maximum_scan_line)=val;
-			VGA_StartResize();
-		} else crtc(maximum_scan_line)=val;
+		if (IS_VGA_ARCH)
+			vga.config.line_compare=(vga.config.line_compare & 0x5ff)|(val&0x40)<<3;
+
+		if (IS_VGA_ARCH && (svgaCard==SVGA_None) && (vga.mode==M_EGA || vga.mode==M_VGA)) {
+			// in vgaonly mode we take special care of line repeats (excluding CGA modes)
+			if ((vga.crtc.maximum_scan_line ^ val) & 0x20) {
+				crtc(maximum_scan_line)=val;
+				VGA_StartResize();
+			} else {
+				crtc(maximum_scan_line)=val;
+			}
+			vga.draw.address_line_total = (val &0x1F) + 1;
+			if (val&0x80) vga.draw.address_line_total*=2;
+		} else {
+			if ((vga.crtc.maximum_scan_line ^ val) & 0xbf) {
+				crtc(maximum_scan_line)=val;
+				VGA_StartResize();
+			} else {
+				crtc(maximum_scan_line)=val;
+			}
+		}
 		/*
 			0-4	Number of scan lines in a character row -1. In graphics modes this is
 				the number of times (-1) the line is displayed before passing on to
@@ -154,7 +173,8 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 	case 0x0A:	/* Cursor Start Register */
 		crtc(cursor_start)=val;
 		vga.draw.cursor.sline=val&0x1f;
-		vga.draw.cursor.enabled=!(val&0x20);
+		if (IS_VGA_ARCH) vga.draw.cursor.enabled=!(val&0x20);
+		else vga.draw.cursor.enabled=true;
 		/*
 			0-4	First scanline of cursor within character.
 			5	Turns Cursor off if set
@@ -203,7 +223,13 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 		break;
 	case 0x11:	/* Vertical Retrace End Register */
 		crtc(vertical_retrace_end)=val;
-		crtc(read_only)=(val & 128)>0;
+		
+		if (IS_EGAVGA_ARCH && !(val & 0x10)) {
+			vga.draw.vret_triggered=false;
+			if (GCC_UNLIKELY(machine==MCH_EGA)) PIC_DeActivateIRQ(9);
+		}
+		if (IS_VGA_ARCH) crtc(read_only)=(val & 128)>0;
+		else crtc(read_only)=false;
 		/*
 			0-3	Vertical Retrace ends when the last 4 bits of the line counter equals
 				this value.
@@ -218,11 +244,16 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 	case 0x12:	/* Vertical Display End Register */
 		if (val!=crtc(vertical_display_end)) {
 			if (abs((Bits)val-(Bits)crtc(vertical_display_end))<3) {
+				// delay small vde changes a bit to avoid screen resizing
+				// if they are reverted in a short timeframe
 				PIC_RemoveEvents(VGA_SetupDrawing);
 				vga.draw.resizing=false;
+				crtc(vertical_display_end)=val;
+				VGA_StartResize(150);
+			} else {
+				crtc(vertical_display_end)=val;
+				VGA_StartResize();
 			}
-			crtc(vertical_display_end)=val;
-			VGA_StartResize();
 		}
 		/*
 			0-7	Lower 8 bits of Vertical Display End. The display ends when the line
@@ -242,13 +273,17 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 		break;
 	case 0x14:	/* Underline Location Register */
 		crtc(underline_location)=val;
-		//Byte,word,dword mode
-		if ( crtc(underline_location) & 0x20 )
-			vga.config.addr_shift = 2;
-		else if ( crtc( mode_control) & 0x40 )
-			vga.config.addr_shift = 0;
-		else
+		if (IS_VGA_ARCH) {
+			//Byte,word,dword mode
+			if ( crtc(underline_location) & 0x20 )
+				vga.config.addr_shift = 2;
+			else if ( crtc( mode_control) & 0x40 )
+				vga.config.addr_shift = 0;
+			else
+				vga.config.addr_shift = 1;
+		} else {
 			vga.config.addr_shift = 1;
+		}
 		/*
 			0-4	Position of underline within Character cell.
 			5	If set memory address is only changed every fourth character clock.
@@ -291,8 +326,8 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 			vga.tandy.addr_mask = ~0;
 			vga.tandy.line_shift = 0;
 		}
-		VGA_DetermineMode();
 		//Should we really need to do a determinemode here?
+//		VGA_DetermineMode();
 		/*
 			0	If clear use CGA compatible memory addressing system
 				by substituting character row scan counter bit 0 for address bit 13,
@@ -320,12 +355,10 @@ void vga_write_p3d5(Bitu port,Bitu val,Bitu iolen) {
 		*/
 		break;
 	default:
-		switch (svgaCard) {
-		case SVGA_S3Trio:
-			SVGA_S3_WriteCRTC( crtc(index), val, iolen);
-			break;
-		default:
-			break;
+		if (svga.write_p3d5) {
+			svga.write_p3d5(crtc(index), val, iolen);
+		} else {
+			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:CRTC:Write to unknown index %X",crtc(index));
 		}
 		break;
 	}
@@ -385,10 +418,9 @@ Bitu vga_read_p3d5(Bitu port,Bitu iolen) {
 	case 0x18:	/* Line Compare Register */
 		return crtc(line_compare);
 	default:
-		switch (svgaCard) {
-		case SVGA_S3Trio:
-			return SVGA_S3_ReadCRTC( crtc(index), iolen );
-		default:
+		if (svga.read_p3d5) {
+			return svga.read_p3d5(crtc(index), iolen);
+		} else {
 			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:CRTC:Read from unknown index %X",crtc(index));
 			return 0x0;
 		}

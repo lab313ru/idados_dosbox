@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -235,9 +235,39 @@
 			RMGdEdOp3(DIMULD,*rmrd);
 			break;
 		}
+	CASE_0F_D(0xb1)												/* CMPXCHG Ed,Gd */
+		{	
+			if (CPU_ArchitectureType<CPU_ARCHTYPE_486NEWSLOW) goto illegal_opcode;
+			FillFlags();
+			GetRMrd;
+			if (rm >= 0xc0) {
+				GetEArd;
+				if (*eard==reg_eax) {
+					*eard=*rmrd;
+					SETFLAGBIT(ZF,1);
+				} else {
+					reg_eax=*eard;
+					SETFLAGBIT(ZF,0);
+				}
+			} else {
+				GetEAa;
+				Bit32u val=LoadMd(eaa);
+				if (val==reg_eax) {
+					SaveMd(eaa,*rmrd);
+					SETFLAGBIT(ZF,1);
+				} else {
+					SaveMd(eaa,val);
+					reg_eax=val;
+					SETFLAGBIT(ZF,0);
+				}
+			}
+			break;
+		}
 	CASE_0F_D(0xb2)												/* LSS Ed */
 		{	
-			GetRMrd;GetEAa;
+			GetRMrd;
+			if (rm >= 0xc0) goto illegal_opcode;
+			GetEAa;
 			if (CPU_SetSegGeneral(ss,LoadMw(eaa+4))) RUNEXCEPTION();
 			*rmrd=LoadMd(eaa);
 			break;
@@ -260,14 +290,18 @@
 		}
 	CASE_0F_D(0xb4)												/* LFS Ed */
 		{	
-			GetRMrd;GetEAa;
+			GetRMrd;
+			if (rm >= 0xc0) goto illegal_opcode;
+			GetEAa;
 			if (CPU_SetSegGeneral(fs,LoadMw(eaa+4))) RUNEXCEPTION();
 			*rmrd=LoadMd(eaa);
 			break;
 		}
 	CASE_0F_D(0xb5)												/* LGS Ed */
 		{	
-			GetRMrd;GetEAa;
+			GetRMrd;
+			if (rm >= 0xc0) goto illegal_opcode;
+			GetEAa;
 			if (CPU_SetSegGeneral(gs,LoadMw(eaa+4))) RUNEXCEPTION();
 			*rmrd=LoadMd(eaa);
 			break;
@@ -399,6 +433,7 @@
 		}
 	CASE_0F_D(0xc1)												/* XADD Gd,Ed */
 		{
+			if (CPU_ArchitectureType<CPU_ARCHTYPE_486OLDSLOW) goto illegal_opcode;
 			GetRMrd;Bit32u oldrmrd=*rmrd;
 			if (rm >= 0xc0 ) {GetEArd;*rmrd=*eard;*eard+=oldrmrd;}
 			else {GetEAa;*rmrd=LoadMd(eaa);SaveMd(eaa,LoadMd(eaa)+oldrmrd);}

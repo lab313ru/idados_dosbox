@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom_aspi_win32.cpp,v 1.18 2007-06-12 20:22:07 c2woody Exp $ */
+/* $Id: cdrom_aspi_win32.cpp,v 1.21 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #if defined (WIN32)
 
@@ -158,19 +158,23 @@ bool CDROM_Interface_Aspi::ScanRegistryFindKey(HKEY& hKeyBase)
 			// Open Key...
 			newKeyResult = RegOpenKeyEx (hKeyBase,subKey,0,KEY_READ,&hNewKey);
 			if (newKeyResult==ERROR_SUCCESS) {
-				if (GetRegistryValue(hNewKey,"CurrentDriveLetterAssignment",buffer,256)) {
+				static const char drive_letter_assignment[] = "CurrentDriveLetterAssignment";
+				if (GetRegistryValue(hNewKey,(char*)&drive_letter_assignment,buffer,256)) {
 					LOG(LOG_MISC,LOG_NORMAL)("SCSI: Drive Letter found: %s",buffer);					
 					// aha, something suspicious...
 					if (buffer[0]==letter) {
 						char hardwareID[256];
 						// found it... lets see if we can get the scsi values				
-						bool v1 = GetRegistryValue(hNewKey,"SCSILUN",buffer,256);
+						static const char SCSI_LUN[] = "SCSILUN";
+						bool v1 = GetRegistryValue(hNewKey,(char*)SCSI_LUN,buffer,256);
 						LOG(LOG_MISC,LOG_NORMAL)("SCSI: SCSILUN found: %s",buffer);					
 						lun		= buffer[0]-'0';
-						bool v2 = GetRegistryValue(hNewKey,"SCSITargetID",buffer,256);
+						static const char SCSI_TargetID[] = "SCSITargetID";
+						bool v2 = GetRegistryValue(hNewKey,(char*)SCSI_TargetID,buffer,256);
 						LOG(LOG_MISC,LOG_NORMAL)("SCSI: SCSITargetID found: %s",buffer);					
 						target  = buffer[0]-'0';
-						bool v3 = GetRegistryValue(hNewKey,"HardwareID",hardwareID,256);
+						static const char Hardware_ID[] = "HardwareID";
+						bool v3 = GetRegistryValue(hNewKey,(char*)Hardware_ID,hardwareID,256);
 						RegCloseKey(hNewKey);
 						if (v1 && v2 && v3) {	
 							haId = GetHostAdapter(hardwareID);
@@ -220,9 +224,9 @@ bool CDROM_Interface_Aspi::GetVendor(BYTE HA_num, BYTE SCSI_Id, BYTE SCSI_Lun, c
 		return false;
 	} else {
 		safe_strncpy(szBuffer,szBuffer+8,26);
-		int len = strlen(szBuffer);
-		for (int i=0; i<len; i++) if (szBuffer[i]<=32) szBuffer[i]='_';
-	};
+		size_t len = strlen(szBuffer);
+		for (size_t i=0; i<len; i++) if (szBuffer[i]<=32) szBuffer[i]='_';
+	}
 	return true;
 }
 

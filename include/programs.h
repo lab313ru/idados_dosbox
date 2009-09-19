@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: programs.h,v 1.19 2009-05-27 09:15:41 qbix79 Exp $ */
+
 #ifndef DOSBOX_PROGRAMS_H
 #define DOSBOX_PROGRAMS_H
 
@@ -25,12 +27,41 @@
 #ifndef DOSBOX_DOS_INC_H
 #include "dos_inc.h"
 #endif
-#ifndef DOSBOX_SETUP_H
-#include "setup.h"
+
+#ifndef CH_LIST
+#define CH_LIST
+#include <list>
 #endif
 
-using std::string;
+#ifndef CH_STRING
+#define CH_STRING
+#include <string>
+#endif
 
+class CommandLine {
+public:
+	CommandLine(int argc,char const * const argv[]);
+	CommandLine(char const * const name,char const * const cmdline);
+	const char * GetFileName(){ return file_name.c_str();}
+
+	bool FindExist(char const * const name,bool remove=false);
+	bool FindHex(char const * const name,int & value,bool remove=false);
+	bool FindInt(char const * const name,int & value,bool remove=false);
+	bool FindString(char const * const name,std::string & value,bool remove=false);
+	bool FindCommand(unsigned int which,std::string & value);
+	bool FindStringBegin(char const * const begin,std::string & value, bool remove=false);
+	bool FindStringRemain(char const * const name,std::string & value);
+	bool GetStringRemain(std::string & value);
+	unsigned int GetCount(void);
+	void Shift(unsigned int amount=1);
+	Bit16u Get_arglength();
+
+private:
+	typedef std::list<std::string>::iterator cmd_it;
+	std::list<std::string> cmds;
+	std::string file_name;
+	bool FindEntry(char const * const name,cmd_it & it,bool neednext=false);
+};
 
 class Program {
 public:
@@ -48,6 +79,9 @@ public:
 	Bitu GetEnvCount(void);
 	bool SetEnv(const char * entry,const char * new_string);
 	void WriteOut(const char * format,...);				/* Write to standard output */
+	void WriteOut_NoParsing(const char * format);				/* Write to standard output, no parsing */
+	void ChangeToLongCmd();
+
 };
 
 typedef void (PROGRAMS_Main)(Program * * make);

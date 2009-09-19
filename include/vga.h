@@ -1,5 +1,5 @@
  /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: vga.h,v 1.46 2009-03-15 11:28:34 c2woody Exp $ */
+
 #ifndef DOSBOX_VGA_H
 #define DOSBOX_VGA_H
 
@@ -26,11 +28,7 @@
 //Don't enable keeping changes and mapping lfb probably...
 #define VGA_LFB_MAPPED
 //#define VGA_KEEP_CHANGES
-#define VGA_MEMORY (2*1024*1024)
 #define VGA_CHANGE_SHIFT	9
-
-//Offset inside VGA_MEMORY that will be used for certain types of caching
-#define VGA_CACHE_OFFSET	(512*1024)
 
 class PageHandler;
 
@@ -42,7 +40,7 @@ enum VGAModes {
 	M_TEXT,
 	M_HERC_GFX, M_HERC_TEXT,
 	M_CGA16, M_TANDY2, M_TANDY4, M_TANDY16, M_TANDY_TEXT,
-	M_ERROR,
+	M_ERROR
 };
 
 
@@ -55,6 +53,18 @@ enum VGAModes {
 #define S3_CLOCK_REF	14318	/* KHz */
 #define S3_CLOCK(_M,_N,_R)	((S3_CLOCK_REF * ((_M) + 2)) / (((_N) + 2) * (1 << (_R))))
 #define S3_MAX_CLOCK	150000	/* KHz */
+
+#define S3_XGA_1024		0x00
+#define S3_XGA_1152		0x01
+#define S3_XGA_640		0x40
+#define S3_XGA_800		0x80
+#define S3_XGA_1280		0xc0
+#define S3_XGA_WMASK	(S3_XGA_640|S3_XGA_800|S3_XGA_1024|S3_XGA_1152|S3_XGA_1280)
+
+#define S3_XGA_8BPP  0x00
+#define S3_XGA_16BPP 0x10
+#define S3_XGA_32BPP 0x30
+#define S3_XGA_CMASK (S3_XGA_8BPP|S3_XGA_16BPP|S3_XGA_32BPP)
 
 typedef struct {
 	bool attrindex;
@@ -107,6 +117,8 @@ typedef struct {
 	Bitu height;
 	Bitu blocks;
 	Bitu address;
+	Bitu panning;
+	Bitu bytes_skip;
 	Bit8u *linear_base;
 	Bitu linear_mask;
 	Bitu address_add;
@@ -120,6 +132,7 @@ typedef struct {
 	Bitu parts_total;
 	Bitu parts_lines;
 	Bitu parts_left;
+	Bitu byte_panning_shift;
 	struct {
 		double framestart;
 		double vrstart, vrend;		// V-retrace
@@ -142,6 +155,7 @@ typedef struct {
 		Bit8u count,delay;
 		Bit8u enabled;
 	} cursor;
+	bool vret_triggered;
 } VGA_Draw;
 
 typedef struct {
@@ -155,38 +169,30 @@ typedef struct {
 	Bit8u mc[64][64];
 } VGA_HWCURSOR;
 
-typedef union {
-	Bit32u fullbank;
-#ifndef WORDS_BIGENDIAN
-	struct {
-		Bit16u lowerbank;
-		Bit16u bank;
-	} b;
-#else
-	struct {
-		Bit16u bank;
-		Bit16u lowerbank;
-	} b;
-#endif
-} VGA_S3_BANK;
-
 typedef struct {
-	VGA_S3_BANK svga_bank;
 	Bit8u reg_lock1;
 	Bit8u reg_lock2;
 	Bit8u reg_31;
 	Bit8u reg_35;
+	Bit8u reg_36; // RAM size
+	Bit8u reg_3a; // 4/8/doublepixel bit in there
 	Bit8u reg_40; // 8415/A functionality register
+	Bit8u reg_41; // BIOS flags 
 	Bit8u reg_43;
 	Bit8u reg_45; // Hardware graphics cursor
-	Bit8u reg_58;
+	Bit8u reg_50;
 	Bit8u reg_51;
+	Bit8u reg_52;
 	Bit8u reg_55;
+	Bit8u reg_58;
+	Bit8u reg_6b; // LFB BIOS scratchpad
 	Bit8u ex_hor_overflow;
 	Bit8u ex_ver_overflow;
 	Bit16u la_window;
 	Bit8u misc_control_2;
 	Bit8u ext_mem_ctrl;
+	Bitu xga_screen_width;
+	VGAModes xga_color_mode;
 	struct {
 		Bit8u r;
 		Bit8u n;
@@ -317,11 +323,17 @@ typedef struct {
 	Bitu first_changed;
 	Bit8u combine[16];
 	RGBEntry rgb[0x100];
+	Bit16u xlat16[256];
 } VGA_Dac;
 
 typedef struct {
 	Bitu	readStart, writeStart;
 	Bitu	bankMask;
+	Bitu	bank_read_full;
+	Bitu	bank_write_full;
+	Bit8u	bank_read;
+	Bit8u	bank_write;
+	Bitu	bank_size;
 } VGA_SVGA;
 
 typedef union {
@@ -330,12 +342,13 @@ typedef union {
 } VGA_Latch;
 
 typedef struct {
-	Bit8u	linear[VGA_MEMORY];
+	Bit8u* linear;
+	Bit8u* linear_orgptr;
 } VGA_Memory;
 
 typedef struct {
 	//Add a few more just to be safe
-	Bit8u	map[(VGA_MEMORY >> VGA_CHANGE_SHIFT) + 32];
+	Bit8u*	map; /* allocated dynamically: [(VGA_MEMORY >> VGA_CHANGE_SHIFT) + 32] */
 	Bit8u	checkMask, frame, writeMask;
 	bool	active;
 	Bit32u  clearMask;
@@ -353,6 +366,7 @@ typedef struct {
 typedef struct {
 	VGAModes mode;								/* The mode the vga system is in */
 	VGAModes lastmode;
+	Bits screenflip;
 	Bit8u misc_output;
 	VGA_Draw draw;
 	VGA_Config config;
@@ -370,6 +384,10 @@ typedef struct {
 	VGA_TANDY tandy;
 	VGA_OTHER other;
 	VGA_Memory mem;
+	Bit32u vmemwrap; /* this is assumed to be power of 2 */
+	Bit8u* fastmem;  /* memory for fast (usually 16-color) rendering, always twice as big as vmemsize */
+	Bit8u* fastmem_orgptr;
+	Bit32u vmemsize;
 #ifdef VGA_KEEP_CHANGES
 	VGA_Changes changes;
 #endif
@@ -382,7 +400,7 @@ typedef struct {
 void VGA_SetMode(VGAModes mode);
 void VGA_DetermineMode(void);
 void VGA_SetupHandlers(void);
-void VGA_StartResize(void);
+void VGA_StartResize(Bitu delay=50);
 void VGA_SetupDrawing(Bitu val);
 void VGA_CheckScanLength(void);
 void VGA_ChangedBank(void);
@@ -394,7 +412,7 @@ void VGA_ATTR_SetPalette(Bit8u index,Bit8u val);
 
 /* The VGA Subfunction startups */
 void VGA_SetupAttr(void);
-void VGA_SetupMemory(void);
+void VGA_SetupMemory(Section* sec);
 void VGA_SetupDAC(void);
 void VGA_SetupCRTC(void);
 void VGA_SetupMisc(void);
@@ -414,14 +432,66 @@ void VGA_SetCGA4Table(Bit8u val0,Bit8u val1,Bit8u val2,Bit8u val3);
 void VGA_ActivateHardwareCursor(void);
 void VGA_KillDrawing(void);
 
-/* S3 Functions */
-Bitu SVGA_S3_GetClock(void);
-void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen);
-Bitu SVGA_S3_ReadCRTC(Bitu reg,Bitu iolen);
-void SVGA_S3_WriteSEQ(Bitu reg,Bitu val,Bitu iolen);
-Bitu SVGA_S3_ReadSEQ(Bitu reg,Bitu iolen);
-
 extern VGA_Type vga;
+
+/* Support for modular SVGA implementation */
+/* Video mode extra data to be passed to FinishSetMode_SVGA().
+   This structure will be in flux until all drivers (including S3)
+   are properly separated. Right now it contains only three overflow
+   fields in S3 format and relies on drivers re-interpreting those.
+   For reference:
+   ver_overflow:X|line_comp10|X|vretrace10|X|vbstart10|vdispend10|vtotal10
+   hor_overflow:X|X|X|hretrace8|X|hblank8|hdispend8|htotal8
+   offset is not currently used by drivers (useful only for S3 itself)
+   It also contains basic int10 mode data - number, vtotal, htotal
+   */
+typedef struct {
+	Bit8u ver_overflow;
+	Bit8u hor_overflow;
+	Bitu offset;
+	Bitu modeNo;
+	Bitu htotal;
+	Bitu vtotal;
+} VGA_ModeExtraData;
+
+// Vector function prototypes
+typedef void (*tWritePort)(Bitu reg,Bitu val,Bitu iolen);
+typedef Bitu (*tReadPort)(Bitu reg,Bitu iolen);
+typedef void (*tFinishSetMode)(Bitu crtc_base, VGA_ModeExtraData* modeData);
+typedef void (*tDetermineMode)();
+typedef void (*tSetClock)(Bitu which,Bitu target);
+typedef Bitu (*tGetClock)();
+typedef bool (*tHWCursorActive)();
+typedef bool (*tAcceptsMode)(Bitu modeNo);
+
+struct SVGA_Driver {
+	tWritePort write_p3d5;
+	tReadPort read_p3d5;
+	tWritePort write_p3c5;
+	tReadPort read_p3c5;
+	tWritePort write_p3c0;
+	tReadPort read_p3c1;
+	tWritePort write_p3cf;
+	tReadPort read_p3cf;
+
+	tFinishSetMode set_video_mode;
+	tDetermineMode determine_mode;
+	tSetClock set_clock;
+	tGetClock get_clock;
+	tHWCursorActive hardware_cursor_active;
+	tAcceptsMode accepts_mode;
+};
+
+extern SVGA_Driver svga;
+
+void SVGA_Setup_S3Trio(void);
+void SVGA_Setup_TsengET4K(void);
+void SVGA_Setup_TsengET3K(void);
+void SVGA_Setup_ParadisePVGA1A(void);
+void SVGA_Setup_Driver(void);
+
+// Amount of video memory required for a mode, implemented in int10_modes.cpp
+Bitu VideoModeMemSize(Bitu mode);
 
 extern Bit32u ExpandTable[256];
 extern Bit32u FillTable[16];

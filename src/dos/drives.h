@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drives.h,v 1.38 2007-08-22 11:54:35 qbix79 Exp $ */
+/* $Id: drives.h,v 1.41 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #ifndef _DRIVES_H__
 #define _DRIVES_H__
@@ -25,9 +25,10 @@
 #include <sys/types.h>
 #include "dos_system.h"
 #include "shell.h" /* for DOS_Shell */
-#include "bios.h"  /* for fatDrive */
+#include "bios_disk.h"  /* for fatDrive */
 
 bool WildFileCmp(const char * file, const char * wild);
+void Set_Label(char const * const input, char * const output, bool cdrom);
 
 class DriveManager {
 public:

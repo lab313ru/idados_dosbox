@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: directserial_posix.h,v 1.2 2007-08-26 17:19:46 qbix79 Exp $ */
+/* $Id: directserial_posix.h,v 1.4 2009-05-27 09:15:41 qbix79 Exp $ */
 
 // include guard
 #ifndef DOSBOX_DIRECTSERIAL_POSIX_H
@@ -25,7 +25,7 @@
 #include "dosbox.h"
 
 #if C_DIRECTSERIAL
-#if defined (LINUX) || defined (MACOSX)
+#if defined (LINUX) || defined (MACOSX) || defined (BSD)
 
 
 

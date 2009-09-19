@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,13 +16,18 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: vga.cpp,v 1.36 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
+//#include "setup.h"
 #include "video.h"
 #include "pic.h"
 #include "vga.h"
 
+#include <string.h>
+
 VGA_Type vga;
+SVGA_Driver svga;
 
 Bit32u CGA_2_Table[16];
 Bit32u CGA_4_Table[256];
@@ -46,44 +51,57 @@ void VGA_SetMode(VGAModes mode) {
 }
 
 void VGA_DetermineMode(void) {
+	if (svga.determine_mode) {
+		svga.determine_mode();
+		return;
+	}
 	/* Test for VGA output active or direct color modes */
-	if (vga.s3.misc_control_2 & 0xf0) {
-		switch (vga.s3.misc_control_2 >> 4) {
-		case 1:VGA_SetMode(M_LIN8);break;
-		case 3:VGA_SetMode(M_LIN15);break;
-		case 5:VGA_SetMode(M_LIN16);break;
-		case 13:VGA_SetMode(M_LIN32);break;
+	switch (vga.s3.misc_control_2 >> 4) {
+	case 0:
+		if (vga.attr.mode_control & 1) { // graphics mode
+			if (IS_VGA_ARCH && (vga.gfx.mode & 0x40)) {
+				// access above 256k?
+				if (vga.s3.reg_31 & 0x8) VGA_SetMode(M_LIN8);
+				else VGA_SetMode(M_VGA);
+			}
+			else if (vga.gfx.mode & 0x20) VGA_SetMode(M_CGA4);
+			else if ((vga.gfx.miscellaneous & 0x0c)==0x0c) VGA_SetMode(M_CGA2);
+			else {
+				// access above 256k?
+				if (vga.s3.reg_31 & 0x8) VGA_SetMode(M_LIN4);
+				else VGA_SetMode(M_EGA);
+			}
+		} else {
+			VGA_SetMode(M_TEXT);
 		}
-	/* Test for graphics or alphanumeric mode */
-	} else if (vga.attr.mode_control & 1) {
-		if (vga.gfx.mode & 0x40) VGA_SetMode(M_VGA);
-		else if (vga.gfx.mode & 0x20) VGA_SetMode(M_CGA4);
-		else if ((vga.gfx.miscellaneous & 0x0c)==0x0c) VGA_SetMode(M_CGA2);
-		else {
-			if (vga.s3.reg_31 & 0x8) 
-				VGA_SetMode(M_LIN4);
-			else
-				VGA_SetMode(M_EGA);
-		}
-	} else {
-		VGA_SetMode(M_TEXT);
+		break;
+	case 1:VGA_SetMode(M_LIN8);break;
+	case 3:VGA_SetMode(M_LIN15);break;
+	case 5:VGA_SetMode(M_LIN16);break;
+	case 13:VGA_SetMode(M_LIN32);break;
 	}
 }
 
-void VGA_StartResize(void) {
+void VGA_StartResize(Bitu delay /*=50*/) {
 	if (!vga.draw.resizing) {
 		vga.draw.resizing=true;
-		/* Start a resize after 50 ms */
-		PIC_AddEvent(VGA_SetupDrawing,50);
+		/* Start a resize after delay (default 50 ms) */
+		PIC_AddEvent(VGA_SetupDrawing,(float)delay);
 	}
 }
 
 void VGA_SetClock(Bitu which,Bitu target) {
+	if (svga.set_clock) {
+		svga.set_clock(which, target);
+		return;
+	}
 	struct{
 		Bitu n,m;
 		Bits err;
 	} best;
 	best.err=target;
+	best.m=1;
+	best.n=1;
 	Bitu n,r;
 	Bits m;
 
@@ -148,9 +166,13 @@ void VGA_SetCGA4Table(Bit8u val0,Bit8u val1,Bit8u val2,Bit8u val3) {
 }
 
 void VGA_Init(Section* sec) {
+//	Section_prop * section=static_cast<Section_prop *>(sec);
+//	vga.screenflip = section->Get_int("screenflip");
+	vga.screenflip = 0;
 	vga.draw.resizing=false;
 	vga.mode=M_ERROR;			//For first init
-	VGA_SetupMemory();
+	SVGA_Setup_Driver();
+	VGA_SetupMemory(sec);
 	VGA_SetupMisc();
 	VGA_SetupDAC();
 	VGA_SetupGFX();
@@ -210,5 +232,27 @@ void VGA_Init(Section* sec) {
 				((i & 8) ? 1 << j : 0);
 #endif
 		}
+	}
+}
+
+void SVGA_Setup_Driver(void) {
+	memset(&svga, 0, sizeof(SVGA_Driver));
+
+	switch(svgaCard) {
+	case SVGA_S3Trio:
+		SVGA_Setup_S3Trio();
+		break;
+	case SVGA_TsengET4K:
+		SVGA_Setup_TsengET4K();
+		break;
+	case SVGA_TsengET3K:
+		SVGA_Setup_TsengET3K();
+		break;
+	case SVGA_ParadisePVGA1A:
+		SVGA_Setup_ParadisePVGA1A();
+		break;
+	default:
+		vga.vmemsize = vga.vmemwrap = 256*1024;
+		break;
 	}
 }

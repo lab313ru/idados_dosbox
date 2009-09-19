@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -169,7 +169,7 @@ restart_opcode:
 				if (len>16) len=16;
 				char tempcode[16*2+1];char * writecode=tempcode;
 				for (;len>0;len--) {
-					sprintf(writecode,"%X",mem_readb(core.cseip++));
+					sprintf(writecode,"%02X",mem_readb(core.cseip++));
 					writecode+=2;
 				}
 				LOG(LOG_CPU,LOG_NORMAL)("Illegal/Unhandled opcode %s",tempcode);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_system.h,v 1.40 2007-06-13 07:25:14 qbix79 Exp $ */
+/* $Id: dos_system.h,v 1.47 2009-03-04 21:08:22 c2woody Exp $ */
 
 #ifndef DOSBOX_DOS_SYSTEM_H
 #define DOSBOX_DOS_SYSTEM_H
@@ -48,7 +48,8 @@ enum {
 	DOS_ATTR_SYSTEM=	0x04,
 	DOS_ATTR_VOLUME=	0x08,
 	DOS_ATTR_DIRECTORY=	0x10,
-	DOS_ATTR_ARCHIVE=	0x20
+	DOS_ATTR_ARCHIVE=	0x20,
+	DOS_ATTR_DEVICE=	0x40
 };
 
 struct FileStat_Block {
@@ -104,12 +105,12 @@ public:
 		open=true;
 		return *this;
 	}
-	DOS_Device():DOS_File(),devnum(0){};   
+	DOS_Device():DOS_File(),devnum(0){};
 	virtual bool	Read(Bit8u * data,Bit16u * size);
 	virtual bool	Write(Bit8u * data,Bit16u * size);
 	virtual bool	Seek(Bit32u * pos,Bit32u type);
 	virtual bool	Close();
-	virtual Bit16u	GetInformation(void);   
+	virtual Bit16u	GetInformation(void);
 	virtual bool	ReadFromControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode);
 	virtual bool	WriteToControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode);
 	void SetDeviceNumber(Bitu num) { devnum=num;}
@@ -117,7 +118,7 @@ private:
 	Bitu devnum;
 };
 
-/* The following variable can be lowered to free up some memory. 
+/* The following variable can be lowered to free up some memory.
  * The negative side effect: The stored searches will be turned over faster.
  * Should not have impact on systems with few directory entries. */
 #define MAX_OPENDIRS 2048
@@ -129,7 +130,7 @@ public:
 	DOS_Drive_Cache					(const char* path);
 	~DOS_Drive_Cache				(void);
 
-	typedef enum TDirSort { NOSORT, ALPHABETICAL, DIRALPHABETICAL, ALPHABETICALREV, DIRALPHABETICALREV };
+	enum TDirSort { NOSORT, ALPHABETICAL, DIRALPHABETICAL, ALPHABETICALREV, DIRALPHABETICALREV };
 
 	void		SetBaseDir			(const char* path);
 	void		SetDirSort			(TDirSort sort) { sortDirType = sort; };
@@ -139,7 +140,7 @@ public:
 	void		ExpandName			(char* path);
 	char*		GetExpandName		(const char* path);
 	bool		GetShortName		(const char* fullname, char* shortname);
-	
+
 	bool		FindFirst			(char* path, Bitu& id);
 	bool		FindNext			(Bitu id, char* &result);
 
@@ -148,11 +149,11 @@ public:
 	void		DeleteEntry			(const char* path, bool ignoreLastDir = false);
 
 	void		EmptyCache			(void);
-	void		SetLabel			(const char* name,bool allowupdate=true);
+	void		SetLabel			(const char* name,bool cdrom,bool allowupdate);
 	char*		GetLabel			(void) { return label; };
 
 	class CFileInfo {
-	public:	
+	public:
 		CFileInfo(void) {
 			orgname[0] = shortname[0] = 0;
 			nextEntry = shortNr = 0;
@@ -178,14 +179,15 @@ private:
 	bool		RemoveTrailingDot	(char* shortname);
 	Bits		GetLongName		(CFileInfo* info, char* shortname);
 	void		CreateShortName		(CFileInfo* dir, CFileInfo* info);
-	Bit16u		CreateShortNameID	(CFileInfo* dir, const char* name);
+	Bitu		CreateShortNameID	(CFileInfo* dir, const char* name);
 	int		CompareShortname	(const char* compareName, const char* shortName);
-	bool		SetResult		(CFileInfo* dir, char * &result, Bit16u entryNr);
+	bool		SetResult		(CFileInfo* dir, char * &result, Bitu entryNr);
 	bool		IsCachedIn		(CFileInfo* dir);
 	CFileInfo*	FindDirInfo		(const char* path, char* expandedPath);
 	bool		RemoveSpaces		(char* str);
 	bool		OpenDir			(CFileInfo* dir, const char* path, Bit16u& id);
-	void		CreateEntry		(CFileInfo* dir, const char* name);
+	void		CreateEntry		(CFileInfo* dir, const char* name, bool query_directory);
+	void		CopyEntry		(CFileInfo* dir, CFileInfo* from);
 	Bit16u		GetFreeID		(CFileInfo* dir);
 	void		Clear			(void);
 
@@ -240,7 +242,7 @@ public:
 	virtual char const * GetLabel(){return dirCache.GetLabel();};
 
 	DOS_Drive_Cache dirCache;
-	
+
 	// disk cycling functionality (request resources)
 	virtual void Activate(void) {};
 };
@@ -250,8 +252,8 @@ enum { DOS_SEEK_SET=0,DOS_SEEK_CUR=1,DOS_SEEK_END=2};
 
 
 /*
- A multiplex handler should read the registers to check what function is being called 
- If the handler returns false dos will stop checking other handlers 
+ A multiplex handler should read the registers to check what function is being called
+ If the handler returns false dos will stop checking other handlers
 */
 
 typedef bool (MultiplexHandler)(void);

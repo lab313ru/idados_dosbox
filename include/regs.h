@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -93,20 +93,20 @@ struct CPU_Regs {
 extern Segments Segs;
 extern CPU_Regs cpu_regs;
 
-INLINE PhysPt SegPhys(SegNames index) {
+static INLINE PhysPt SegPhys(SegNames index) {
 	return Segs.phys[index];
 }
 
-INLINE Bit16u SegValue(SegNames index) {
+static INLINE Bit16u SegValue(SegNames index) {
 	return (Bit16u)Segs.val[index];
 }
 	
-INLINE RealPt RealMakeSeg(SegNames index,Bit16u off) {
+static INLINE RealPt RealMakeSeg(SegNames index,Bit16u off) {
 	return RealMake(SegValue(index),off);	
 }
 
 
-INLINE void SegSet16(Bitu index,Bit16u val) {
+static INLINE void SegSet16(Bitu index,Bit16u val) {
 	Segs.val[index]=val;
 	Segs.phys[index]=val << 4;
 }
@@ -118,7 +118,7 @@ enum {
 
 enum {
 	REGI_AL, REGI_CL, REGI_DL, REGI_BL,
-	REGI_AH, REGI_CH, REGI_DH, REGI_BH,
+	REGI_AH, REGI_CH, REGI_DH, REGI_BH
 };
 
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: timer.cpp,v 1.44 2007-06-12 20:22:08 c2woody Exp $ */
+/* $Id: timer.cpp,v 1.49 2009-04-10 09:53:04 c2woody Exp $ */
 
 #include <math.h>
 #include "dosbox.h"
@@ -54,6 +54,8 @@ struct PIT_Block {
 	bool go_read_latch;
 	bool new_mode;
 	bool counterstatus_set;
+	bool counting;
+	bool update_count;
 };
 
 static PIT_Block pit[3];
@@ -68,6 +70,12 @@ static void PIT0_Event(Bitu /*val*/) {
 	PIC_ActivateIRQ(0);
 	if (pit[0].mode != 0) {
 		pit[0].start += pit[0].delay;
+
+		if (GCC_UNLIKELY(pit[0].update_count)) {
+			pit[0].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[0].cntr));
+			pit[0].update_count=false;
+		}
+
 		double error = 	pit[0].start - PIC_FullIndex();
 		PIC_AddEvent(PIT0_Event,(float)(pit[0].delay + error));
 	}
@@ -90,6 +98,11 @@ static bool counter_output(Bitu counter) {
 		if (p->new_mode) return true;
 		index=fmod(index,(double)p->delay);
 		return index*2<p->delay;
+	case 4:
+		//Only low on terminal count
+		// if(fmod(index,(double)p->delay) == 0) return false; //Maybe take one rate tick in consideration
+		//Easiest solution is to report always high (Space marines uses this mode)
+		return true;
 	default:
 		LOG(LOG_PIT,LOG_ERROR)("Illegal Mode %d for reading output",p->mode);
 		return true;
@@ -127,7 +140,7 @@ static void counter_latch(Bitu counter) {
 	p->go_read_latch=false;
 
 	//If gate2 is disabled don't update the read_latch
-	if(counter == 2 && !gate2) return;
+	if(counter == 2 && !gate2 && p->mode !=1) return;
 
 	double index=PIC_FullIndex()-p->start;
 	switch (p->mode) {
@@ -145,6 +158,15 @@ static void counter_latch(Bitu counter) {
 			}
 		} else {
 			p->read_latch=(Bit16u)(p->cntr-index*(PIT_TICK_RATE/1000.0));
+		}
+		break;
+	case 1: // countdown
+		if(p->counting) {
+			if (index>p->delay) { // has timed out
+				p->read_latch = 0xffff; //unconfirmed
+			} else {
+				p->read_latch=(Bit16u)(p->cntr-index*(PIT_TICK_RATE/1000.0));
+			}
 		}
 		break;
 	case 2:		/* Rate Generator */
@@ -197,15 +219,24 @@ static void write_latch(Bitu port,Bitu val,Bitu /*iolen*/) {
 			if (p->bcd == false) p->cntr = 0x10000;
 			else p->cntr=9999;
 		} else p->cntr = p->write_latch;
+
+		if ((!p->new_mode) && (p->mode == 2) && (counter == 0)) {
+			// In mode 2 writing another value has no direct effect on the count
+			// until the old one has run out. This might apply to other modes too.
+			// This is not fixed for PIT2 yet!!
+			p->update_count=true;
+			return;
+		}
 		p->start=PIC_FullIndex();
 		p->delay=(1000.0f/((float)PIT_TICK_RATE/(float)p->cntr));
+
 		switch (counter) {
 		case 0x00:			/* Timer hooked to IRQ 0 */
 			if (p->new_mode || p->mode == 0 ) {
 				if(p->mode==0) PIC_RemoveEvents(PIT0_Event); // DoWhackaDo demo
 				PIC_AddEvent(PIT0_Event,p->delay);
 			} else LOG(LOG_PIT,LOG_NORMAL)("PIT 0 Timer set without new control word");
-			LOG(LOG_PIT,LOG_NORMAL)("PIT 0 Timer at %.2f Hz mode %d",1000.0/p->delay,p->mode);
+			LOG(LOG_PIT,LOG_NORMAL)("PIT 0 Timer at %.4f Hz mode %d",1000.0/p->delay,p->mode);
 			break;
 		case 0x02:			/* Timer hooked to PC-Speaker */
 //			LOG(LOG_PIT,"PIT 2 Timer at %.3g Hz mode %d",PIT_TICK_RATE/(double)p->cntr,p->mode);
@@ -282,7 +313,8 @@ static void write_p43(Bitu /*port*/,Bitu val,Bitu /*iolen*/) {
 				pit[latch].counterstatus_set=false;
 				latched_timerstatus_locked=false;
 			}
-
+			pit[latch].update_count = false;
+			pit[latch].counting = false;
 			pit[latch].read_state  = (val >> 4) & 0x03;
 			pit[latch].write_state = (val >> 4) & 0x03;
 			Bit8u mode             = (val >> 1) & 0x07;
@@ -345,13 +377,19 @@ void TIMER_SetGate2(bool in) {
 			pit[2].cntr = pit[2].read_latch;
 		}
 		break;
+	case 1:
+		// gate 1 on: reload counter; off: nothing
+		if(in) {
+			pit[2].counting = true;
+			pit[2].start = PIC_FullIndex();
+		}
+		break;
 	case 2:
 	case 3:
 		//If gate is enabled restart counting. If disable store the current read_latch
 		if(in) pit[2].start = PIC_FullIndex();
 		else counter_latch(2);
 		break;
-	case 1:
 	case 4:
 	case 5:
 		LOG(LOG_MISC,LOG_WARN)("unsupported gate 2 mode %x",mode);
@@ -383,6 +421,7 @@ public:
 		pit[0].bcd = false;
 		pit[0].go_read_latch = true;
 		pit[0].counterstatus_set = false;
+		pit[0].update_count = false;
 	
 		pit[1].bcd = false;
 		pit[1].write_state = 1;
@@ -393,7 +432,7 @@ public:
 		pit[1].write_state = 3;
 		pit[1].counterstatus_set = false;
 	
-		pit[2].read_latch=0;	/* MadTv1 */
+		pit[2].read_latch=1320;	/* MadTv1 */
 		pit[2].write_state = 3; /* Chuck Yeager */
 		pit[2].read_state = 3;
 		pit[2].mode=3;
@@ -401,13 +440,14 @@ public:
 		pit[2].cntr=1320;
 		pit[2].go_read_latch=true;
 		pit[2].counterstatus_set = false;
+		pit[2].counting = false;
 	
 		pit[0].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[0].cntr));
 		pit[1].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[1].cntr));
 		pit[2].delay=(1000.0f/((float)PIT_TICK_RATE/(float)pit[2].cntr));
 
 		latched_timerstatus_locked=false;
-		gate2 = true;
+		gate2 = false;
 		PIC_AddEvent(PIT0_Event,pit[0].delay);
 	}
 	~TIMER(){

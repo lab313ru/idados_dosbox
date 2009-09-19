@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -754,7 +754,7 @@ static Bit8u DRC_CALL_CONV dynrec_rol_byte_simple(Bit8u op1,Bit8u op2) {
 static Bit8u DRC_CALL_CONV dynrec_ror_byte(Bit8u op1,Bit8u op2) DRC_FC;
 static Bit8u DRC_CALL_CONV dynrec_ror_byte(Bit8u op1,Bit8u op2) {
 	if (!(op2&0x7)) {
-		if (op2&0x10) {
+		if (op2&0x18) {
 			FillFlagsNoCFOF();
 			SETFLAGBIT(CF,op1>>7);
 			SETFLAGBIT(OF,(op1>>7) ^ ((op1>>6) & 1));

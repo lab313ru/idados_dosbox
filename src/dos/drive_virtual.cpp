@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -98,12 +98,12 @@ bool Virtual_File::Read(Bit8u * data,Bit16u * size) {
 	}
 	file_pos+=*size;
 	return true;
-};
+}
 
 bool Virtual_File::Write(Bit8u * data,Bit16u * size){
 /* Not really writeable */
 	return false;
-};
+}
 
 bool Virtual_File::Seek(Bit32u * new_pos,Bit32u type){
 	switch (type) {
@@ -122,11 +122,11 @@ bool Virtual_File::Seek(Bit32u * new_pos,Bit32u type){
 	}
 	*new_pos=file_pos;
 	return true;
-};
+}
 
 bool Virtual_File::Close(){
 	return true;
-};
+}
 
 
 Bit16u Virtual_File::GetInformation(void) {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: programs.cpp,v 1.28 2007-06-12 20:22:09 c2woody Exp $ */
+/* $Id: programs.cpp,v 1.37 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include <vector>
 #include <ctype.h>
@@ -29,7 +29,7 @@
 #include "regs.h"
 #include "support.h"
 #include "cross.h"
-#include "setup.h"
+#include "control.h"
 #include "shell.h"
 
 Bitu call_program;
@@ -58,7 +58,7 @@ void PROGRAMS_MakeFile(char const * const name,PROGRAMS_Main * main) {
 	comdata[CB_POS+1]=(Bit8u)((call_program>>8)&0xff);
 
 	/* Copy save the pointer in the vector and save it's index */
-	if (internal_progs.size()>255) E_Exit("PROGRAMS_MakeFile program size too large (%d)",internal_progs.size());
+	if (internal_progs.size()>255) E_Exit("PROGRAMS_MakeFile program size too large (%d)",static_cast<int>(internal_progs.size()));
 	Bit8u index = (Bit8u)internal_progs.size();
 	internal_progs.push_back(main);
 
@@ -101,9 +101,31 @@ Program::Program() {
 	MEM_BlockRead(PhysMake(dos.psp(),128),&tail,128);
 	if (tail.count<127) tail.buffer[tail.count]=0;
 	else tail.buffer[126]=0;
-	char filename[256];
+	char filename[256+1];
 	MEM_StrCopy(envscan,filename,256);
 	cmd = new CommandLine(filename,tail.buffer);
+}
+
+extern std::string full_arguments;
+
+void Program::ChangeToLongCmd() {
+	/* 
+	 * Get arguments directly from the shell instead of the psp.
+	 * this is done in securemode: (as then the arguments to mount and friends
+	 * can only be given on the shell ( so no int 21 4b) 
+	 * Securemode part is disabled as each of the internal command has already
+	 * protection for it. (and it breaks games like cdman)
+	 * it is also done for long arguments to as it is convient (as the total commandline can be longer then 127 characters.
+	 * imgmount with lot's of parameters
+	 * Length of arguments can be ~120. but switch when above 100 to be sure
+	 */
+
+	if(/*control->SecureMode() ||*/ cmd->Get_arglength() > 100) {	
+		CommandLine* temp = new CommandLine(cmd->GetFileName(),full_arguments.c_str());
+		delete cmd;
+		cmd = temp;
+	}
+	full_arguments.assign(""); //Clear so it gets even more save
 }
 
 void Program::WriteOut(const char * format,...) {
@@ -114,21 +136,26 @@ void Program::WriteOut(const char * format,...) {
 	vsnprintf(buf,2047,format,msg);
 	va_end(msg);
 
-	Bit16u size=strlen(buf);
+	Bit16u size = (Bit16u)strlen(buf);
 	DOS_WriteFile(STDOUT,(Bit8u *)buf,&size);
+}
+
+void Program::WriteOut_NoParsing(const char * format) {
+	Bit16u size = (Bit16u)strlen(format);
+	DOS_WriteFile(STDOUT,(Bit8u *)format,&size);
 }
 
 
 bool Program::GetEnvStr(const char * entry,std::string & result) {
 	/* Walk through the internal environment and see for a match */
 	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
-	char env_string[1024];
+	char env_string[1024+1];
 	result.erase();
 	if (!entry[0]) return false;
 	do 	{
 		MEM_StrCopy(env_read,env_string,1024);
 		if (!env_string[0]) return false;
-		env_read+=strlen(env_string)+1;
+		env_read += (PhysPt)(strlen(env_string)+1);
 		char* equal = strchr(env_string,'=');
 		if (!equal) continue;
 		/* replace the = with \0 to get the length */
@@ -141,16 +168,16 @@ bool Program::GetEnvStr(const char * entry,std::string & result) {
 		return true;
 	} while (1);
 	return false;
-};
+}
 
 bool Program::GetEnvNum(Bitu num,std::string & result) {
-	char env_string[1024];
+	char env_string[1024+1];
 	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
 	do 	{
 		MEM_StrCopy(env_read,env_string,1024);
 		if (!env_string[0]) break;
 		if (!num) { result=env_string;return true;}
-		env_read+=strlen(env_string)+1;
+		env_read += (PhysPt)(strlen(env_string)+1);
 		num--;
 	} while (1);
 	return false;
@@ -170,16 +197,16 @@ Bitu Program::GetEnvCount(void) {
 bool Program::SetEnv(const char * entry,const char * new_string) {
 	PhysPt env_read=PhysMake(psp->GetEnvironment(),0);
 	PhysPt env_write=env_read;
-	char env_string[1024];
+	char env_string[1024+1];
 	do 	{
 		MEM_StrCopy(env_read,env_string,1024);
 		if (!env_string[0]) break;
-		env_read+=strlen(env_string)+1;
+		env_read += (PhysPt)(strlen(env_string)+1);
 		if (!strchr(env_string,'=')) continue;		/* Remove corrupt entry? */
 		if ((strncasecmp(entry,env_string,strlen(entry))==0) && 
 			env_string[strlen(entry)]=='=') continue;
-		MEM_BlockWrite(env_write,env_string,strlen(env_string)+1);
-		env_write+=strlen(env_string)+1;
+		MEM_BlockWrite(env_write,env_string,(Bitu)(strlen(env_string)+1));
+		env_write += (PhysPt)(strlen(env_string)+1);
 	} while (1);
 /* TODO Maybe save the program name sometime. not really needed though */
 	/* Save the new entry */
@@ -188,8 +215,8 @@ bool Program::SetEnv(const char * entry,const char * new_string) {
 		for (std::string::iterator it = bigentry.begin(); it != bigentry.end(); ++it) *it = toupper(*it);
 		sprintf(env_string,"%s=%s",bigentry.c_str(),new_string); 
 //		sprintf(env_string,"%s=%s",entry,new_string); //oldcode
-		MEM_BlockWrite(env_write,env_string,strlen(env_string)+1);
-		env_write+=strlen(env_string)+1;
+		MEM_BlockWrite(env_write,env_string,(Bitu)(strlen(env_string)+1));
+		env_write += (PhysPt)(strlen(env_string)+1);
 	}
 	/* Clear out the final piece of the environment */
 	mem_writed(env_write,0);
@@ -207,6 +234,11 @@ void CONFIG::Run(void) {
 	FILE * f;
 	if (cmd->FindString("-writeconf",temp_line,true) 
 			|| cmd->FindString("-wc",temp_line,true)) {
+		/* In secure mode don't allow a new configfile to be created */
+		if(control->SecureMode()) {
+			WriteOut(MSG_Get("PROGRAM_CONFIG_SECURE_DISALLOW"));
+			return;
+		}
 		f=fopen(temp_line.c_str(),"wb+");
 		if (!f) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_FILE_ERROR"),temp_line.c_str());
@@ -218,6 +250,12 @@ void CONFIG::Run(void) {
 	}
 	if (cmd->FindString("-writelang",temp_line,true)
 			||cmd->FindString("-wl",temp_line,true)) {
+		/* In secure mode don't allow a new languagefile to be created
+		 * Who knows which kind of file we would overwriting. */
+		if(control->SecureMode()) {
+			WriteOut(MSG_Get("PROGRAM_CONFIG_SECURE_DISALLOW"));
+			return;
+		}
 		f=fopen(temp_line.c_str(),"wb+");
 		if (!f) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_FILE_ERROR"),temp_line.c_str());
@@ -228,6 +266,13 @@ void CONFIG::Run(void) {
 		return;
 	}
 
+	/* Code for switching to secure mode */
+	if(cmd->FindExist("-securemode",true)) {
+		control->SwitchToSecureMode();
+		WriteOut(MSG_Get("PROGRAM_CONFIG_SECURE_ON"));
+		return;
+	}
+   
 	/* Code for getting the current configuration.           *
 	 * Official format: config -get "section property"       *
 	 * As a bonus it will set %CONFIG% to this value as well */
@@ -249,13 +294,13 @@ void CONFIG::Run(void) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_SECTION_ERROR"),temp_line.c_str());
 			return;
 		}
-		char const* val = sec->GetPropValue(prop.c_str());
-		if(!val) {
+		std::string val = sec->GetPropValue(prop.c_str());
+		if(val == NO_SUCH_PROPERTY) {
 			WriteOut(MSG_Get("PROGRAM_CONFIG_NO_PROPERTY"),prop.c_str(),temp_line.c_str());   
 			return;
 		}
-		WriteOut("%s",val);
-		first_shell->SetEnv("CONFIG",val);
+		WriteOut("%s",val.c_str());
+		first_shell->SetEnv("CONFIG",val.c_str());
 		return;
 	}
 
@@ -338,6 +383,8 @@ void PROGRAMS_Init(Section* /*sec*/) {
 
 	MSG_Add("PROGRAM_CONFIG_FILE_ERROR","Can't open file %s\n");
 	MSG_Add("PROGRAM_CONFIG_USAGE","Config tool:\nUse -writeconf filename to write the current config.\nUse -writelang filename to write the current language strings.\n");
+	MSG_Add("PROGRAM_CONFIG_SECURE_ON","Switched to secure mode.\n");
+	MSG_Add("PROGRAM_CONFIG_SECURE_DISALLOW","This operation is not permitted in secure mode.\n");
 	MSG_Add("PROGRAM_CONFIG_SECTION_ERROR","Section %s doesn't exist.\n");
 	MSG_Add("PROGRAM_CONFIG_PROPERTY_ERROR","No such section or property.\n");
 	MSG_Add("PROGRAM_CONFIG_NO_PROPERTY","There is no property %s in section %s.\n");

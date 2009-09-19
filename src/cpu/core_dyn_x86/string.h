@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ enum STRING_OP {
 	STR_LODSB=12,STR_LODSW,STR_LODSD,
 	STR_STOSB=16,STR_STOSW,STR_STOSD,
 	STR_SCASB=20,STR_SCASW,STR_SCASD,
-	STR_CMPSB=24,STR_CMPSW,STR_CMPSD,
+	STR_CMPSB=24,STR_CMPSW,STR_CMPSD
 };
 
 static void dyn_string(STRING_OP op) {

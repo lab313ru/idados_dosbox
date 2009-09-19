@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_execute.cpp,v 1.61 2007-08-09 19:52:33 c2woody Exp $ */
+/* $Id: dos_execute.cpp,v 1.67 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include <string.h>
 #include <ctype.h>
@@ -104,9 +104,9 @@ void DOS_UpdatePSPName(void) {
 	GFX_SetTitle(-1,-1,false);
 }
 
-bool DOS_Terminate(bool tsr) {
+bool DOS_Terminate(bool tsr,Bit8u exitcode) {
 
-	dos.return_code=reg_al;
+	dos.return_code=exitcode;
 	dos.return_mode=RETURN_EXIT;
 	
 	Bit16u mempsp = dos.psp();
@@ -207,7 +207,7 @@ static bool MakeEnv(char * name,Bit16u * segment) {
 	envwrite+=2;
 	char namebuf[DOS_PATHLENGTH];
 	if (DOS_Canonicalize(name,namebuf)) {
-		MEM_BlockWrite(envwrite,namebuf,strlen(namebuf)+1);
+		MEM_BlockWrite(envwrite,namebuf,(Bitu)(strlen(namebuf)+1));
 		return true;
 	} else return false;
 }
@@ -221,7 +221,7 @@ bool DOS_NewPSP(Bit16u segment, Bit16u size) {
 	// copy command line as well (Kings Quest AGI -cga switch)
 	psp.SetCommandTail(RealMake(parent_psp_seg,0x80));
 	return true;
-};
+}
 
 bool DOS_ChildPSP(Bit16u segment, Bit16u size) {
 	DOS_PSP psp(segment);
@@ -231,7 +231,7 @@ bool DOS_ChildPSP(Bit16u segment, Bit16u size) {
 	psp.SetEnvironment(psp_parent.GetEnvironment());
 	psp.SetSize(size);
 	return true;
-};
+}
 
 static void SetupPSP(Bit16u pspseg,Bit16u memsize,Bit16u envseg) {
 	/* Fix the PSP for psp and environment MCB's */
@@ -336,9 +336,18 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 			else maxsize=0xffff;
 		}
 		if (maxfree<minsize) {
-			DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
-			DOS_FreeMemory(envseg);
-			return false;
+			if (iscom) {
+				/* Reduce minimum of needed memory size to filesize */
+				pos=0;DOS_SeekFile(fhandle,&pos,DOS_SEEK_SET);	
+				Bit16u dataread=0xf800;
+				DOS_ReadFile(fhandle,loadbuf,&dataread);
+				if (dataread<0xf800) minsize=((dataread+0x10)>>4)+0x20;
+			}
+			if (maxfree<minsize) {
+				DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
+				DOS_FreeMemory(envseg);
+				return false;
+			}
 		}
 		if (maxfree<maxsize) memsize=maxfree;
 		else memsize=maxsize;
@@ -418,14 +427,18 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 	}
 
 	if (flags==LOAD) {
+		SaveRegisters();
 		DOS_PSP callpsp(dos.psp());
 		/* Save the SS:SP on the PSP of calling program */
 		callpsp.SetStack(RealMakeSeg(ss,reg_sp));
+		reg_sp+=18;
 		/* Switch the psp's */
 		dos.psp(pspseg);
 		DOS_PSP newpsp(dos.psp());
 		dos.dta(RealMake(newpsp.GetSegment(),0x80));
-		block.exec.initsssp = sssp;
+		/* First word on the stack is the value ax should contain on startup */
+		real_writew(RealSeg(sssp-2),RealOff(sssp-2),0xffff);
+		block.exec.initsssp = sssp-2;
 		block.exec.initcsip = csip;
 		block.SaveData();
 		return true;
@@ -450,13 +463,16 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		/* Set the stack for new program */
 		SegSet16(ss,RealSeg(sssp));reg_sp=RealOff(sssp);
 		/* Add some flags and CS:IP on the stack for the IRET */
-		reg_sp-=6;
+		reg_sp-=4;
 		mem_writew(SegPhys(ss)+reg_sp+0,RealOff(csip));
 		mem_writew(SegPhys(ss)+reg_sp+2,RealSeg(csip));
-		/* DOS starts programs with a RETF, so our IRET
-		   should not modify critical flags (IOPL in v86 mode);
-		   interrupt flag is set explicitly, test flags cleared */
-		mem_writew(SegPhys(ss)+reg_sp+4,(reg_flags&(~FMASK_TEST))|FLAG_IF);
+		/* Old info, we now jump to a RETF:
+		 * DOS starts programs with a RETF, so our IRET
+		 * should not modify critical flags (IOPL in v86 mode);
+		 * interrupt flag is set explicitly, test flags cleared */
+		reg_flags=(reg_flags&(~FMASK_TEST))|FLAG_IF;
+		//Jump to retf so that we only need to store cs:ip on the stack
+		reg_ip++;
 		/* Setup the rest of the registers */
 		reg_ax=reg_bx=0;reg_cx=0xff;
 		reg_dx=pspseg;

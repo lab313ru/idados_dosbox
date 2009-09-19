@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,20 +16,22 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cdrom_image.cpp,v 1.17 2007-08-22 11:54:35 qbix79 Exp $ */
+/* $Id: cdrom_image.cpp,v 1.24 2009-03-19 20:45:42 c2woody Exp $ */
 
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <limits.h>
+#include <limits>
+#include <limits.h> //GCC 2.95
 #include <sstream>
 #include <vector>
 #include <sys/stat.h>
 #include "cdrom.h"
 #include "drives.h"
 #include "support.h"
+#include "setup.h"
 
 #if !defined(WIN32)
 #include <libgen.h>
@@ -63,7 +65,7 @@ bool CDROM_Interface_Image::BinaryFile::read(Bit8u *buffer, int seek, int count)
 int CDROM_Interface_Image::BinaryFile::getLength()
 {
 	file->seekg(0, ios::end);
-	int length = file->tellg();
+	int length = (int)file->tellg();
 	if (file->fail()) return -1;
 	return length;
 }
@@ -129,7 +131,7 @@ int CDROM_Interface_Image::AudioFile::getLength()
 int CDROM_Interface_Image::refCount = 0;
 CDROM_Interface_Image* CDROM_Interface_Image::images[26];
 CDROM_Interface_Image::imagePlayer CDROM_Interface_Image::player = {
-	NULL, NULL, NULL, 0, 0,	0, 0, 0, false,	false };
+	NULL, NULL, NULL, {0}, 0, 0, 0, false, false };
 
 	
 CDROM_Interface_Image::CDROM_Interface_Image(Bit8u subUnit)
@@ -168,7 +170,7 @@ bool CDROM_Interface_Image::SetDevice(char* path, int forceCD)
 	// print error message on dosbox console
 	char buf[MAX_LINE_LENGTH];
 	snprintf(buf, MAX_LINE_LENGTH, "Could not load image file: %s\n", path);
-	Bit16u size = strlen(buf);
+	Bit16u size = (Bit16u)strlen(buf);
 	DOS_WriteFile(STDOUT, (Bit8u*)buf, &size);
 	return false;
 }
@@ -183,7 +185,7 @@ bool CDROM_Interface_Image::GetUPC(unsigned char& attr, char* upc)
 bool CDROM_Interface_Image::GetAudioTracks(int& stTrack, int& end, TMSF& leadOut)
 {
 	stTrack = 1;
-	end = tracks.size() - 1;
+	end = (int)(tracks.size() - 1);
 	FRAMES_TO_MSF(tracks[tracks.size() - 1].start + 150, &leadOut.min, &leadOut.sec, &leadOut.fr);
 	return true;
 }
@@ -198,8 +200,9 @@ bool CDROM_Interface_Image::GetAudioTrackInfo(int track, TMSF& start, unsigned c
 
 bool CDROM_Interface_Image::GetAudioSub(unsigned char& attr, unsigned char& track, unsigned char& index, TMSF& relPos, TMSF& absPos)
 {
-	track = GetTrack(player.currFrame);
-	if (track < 1) return false;
+	int cur_track = GetTrack(player.currFrame);
+	if (cur_track < 1) return false;
+	track = (unsigned char)cur_track;
 	attr = tracks[track - 1].attr;
 	index = 1;
 	FRAMES_TO_MSF(player.currFrame + 150, &absPos.min, &absPos.sec, &absPos.fr);
@@ -324,7 +327,11 @@ void CDROM_Interface_Image::CDAudioCallBack(Bitu len)
 		}
 	}
 	SDL_mutexV(player.mutex);
+#if defined(WORDS_BIGENDIAN)
+	player.channel->AddSamples_s16_nonnative(len/4,(Bit16s *)player.buffer);
+#else
 	player.channel->AddSamples_s16(len/4,(Bit16s *)player.buffer);
+#endif
 	memmove(player.buffer, &player.buffer[len], player.bufLen - len);
 	player.bufLen -= len;
 }
@@ -604,11 +611,13 @@ bool CDROM_Interface_Image::GetRealFileName(string &filename, string &pathname)
 	Bit8u drive;
 	if (!DOS_MakeName(tmp, fullname, &drive)) return false;
 	
-	localDrive *ldp = (localDrive*)Drives[drive];
-	ldp->GetSystemFilename(tmp, fullname);
-	if (stat(tmp, &test) == 0) {
-		filename = tmp;
-		return true;
+	localDrive *ldp = dynamic_cast<localDrive*>(Drives[drive]);
+	if (ldp) {
+		ldp->GetSystemFilename(tmp, fullname);
+		if (stat(tmp, &test) == 0) {
+			filename = tmp;
+			return true;
+		}
 	}
 	
 	return false;
@@ -635,7 +644,7 @@ bool CDROM_Interface_Image::GetCueFrame(int &frames, istream &in)
 
 bool CDROM_Interface_Image::GetCueString(string &str, istream &in)
 {
-	int pos = in.tellg();
+	int pos = (int)in.tellg();
 	in >> str;
 	if (str[0] == '\"') {
 		if (str[str.size() - 1] == '\"') {

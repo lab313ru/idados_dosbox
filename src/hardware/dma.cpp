@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: dma.cpp,v 1.40 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -231,11 +233,12 @@ Bitu DmaController::ReadControllerReg(Bitu reg,Bitu len) {
 			chan=GetChannel(i);
 			if (chan->tcount) ret|=1 << i;
 			chan->tcount=false;
-			if (chan->callback) ret|=1 << (i+4);
+//			if (chan->callback) ret|=1 << (i+4);
+			if (chan->request) ret|=1 << (4+i);
 		}
 		return ret;
 	default:
-		LOG(LOG_DMA,LOG_NORMAL)("Trying to read undefined DMA port %x",reg);
+		LOG(LOG_DMACONTROL,LOG_NORMAL)("Trying to read undefined DMA port %x",reg);
 		break;
 	}
 	return 0xffffffff;
@@ -256,6 +259,7 @@ DmaChannel::DmaChannel(Bit8u num, bool dma16) {
 	increment = true;
 	autoinit = false;
 	tcount = false;
+	request = false;
 }
 
 Bitu DmaChannel::Read(Bitu want, Bit8u * buffer) {
@@ -325,7 +329,8 @@ public:
 	DMA(Section* configuration):Module_base(configuration){
 		Bitu i;
 		DmaControllers[0] = new DmaController(0);
-		if (machine==MCH_VGA) DmaControllers[1] = new DmaController(1);
+		if (IS_EGAVGA_ARCH) DmaControllers[1] = new DmaController(1);
+		else DmaControllers[1] = NULL;
 	
 		for (i=0;i<0x10;i++) {
 			Bitu mask=IO_MB;
@@ -333,7 +338,7 @@ public:
 			/* install handler for first DMA controller ports */
 			DmaControllers[0]->DMA_WriteHandler[i].Install(i,DMA_Write_Port,mask);
 			DmaControllers[0]->DMA_ReadHandler[i].Install(i,DMA_Read_Port,mask);
-			if (machine==MCH_VGA) {
+			if (IS_EGAVGA_ARCH) {
 				/* install handler for second DMA controller ports */
 				DmaControllers[1]->DMA_WriteHandler[i].Install(0xc0+i*2,DMA_Write_Port,mask);
 				DmaControllers[1]->DMA_ReadHandler[i].Install(0xc0+i*2,DMA_Read_Port,mask);
@@ -343,7 +348,7 @@ public:
 		DmaControllers[0]->DMA_WriteHandler[0x10].Install(0x81,DMA_Write_Port,IO_MB,3);
 		DmaControllers[0]->DMA_ReadHandler[0x10].Install(0x81,DMA_Read_Port,IO_MB,3);
 
-		if (machine==MCH_VGA) {
+		if (IS_EGAVGA_ARCH) {
 			/* install handlers for ports 0x81-0x83 (on the second DMA controller) */
 			DmaControllers[1]->DMA_WriteHandler[0x10].Install(0x89,DMA_Write_Port,IO_MB,3);
 			DmaControllers[1]->DMA_ReadHandler[0x10].Install(0x89,DMA_Read_Port,IO_MB,3);

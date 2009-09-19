@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cross.h,v 1.18 2007-01-08 19:45:37 qbix79 Exp $ */
+/* $Id: cross.h,v 1.21 2009-03-14 18:02:34 qbix79 Exp $ */
 
 #ifndef DOSBOX_CROSS_H
 #define DOSBOX_CROSS_H
@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <string>
 
 #if defined (_MSC_VER)						/* MS Visual C++ */
 #include <direct.h>
@@ -65,5 +66,43 @@
 #include <math.h>
 static inline float powf (float x, float y) { return (float) pow (x,y); }
 #endif
+
+class Cross {
+public:
+	static void GetPlatformConfigDir(std::string& in);
+	static void GetPlatformConfigName(std::string& in);
+	static void CreatePlatformConfigDir(std::string& in);
+	static void ResolveHomedir(std::string & temp_line);
+	static void CreateDir(std::string const& temp);
+};
+
+
+#if defined (WIN32)
+
+#define WIN32_LEAN_AND_MEAN        // Exclude rarely-used stuff from 
+#include <windows.h>
+
+typedef struct dir_struct {
+	HANDLE          handle;
+	char            base_path[MAX_PATH+4];
+	WIN32_FIND_DATA search_data;
+} dir_information;
+
+#else
+
+//#include <sys/types.h> //Included above
+#include <dirent.h>
+
+typedef struct dir_struct { 
+	DIR*  dir;
+	char base_path[CROSS_LEN];
+} dir_information;
+
+#endif
+
+dir_information* open_directory(const char* dirname);
+bool read_directory_first(dir_information* dirp, char* entry_name, bool& is_directory);
+bool read_directory_next(dir_information* dirp, char* entry_name, bool& is_directory);
+void close_directory(dir_information* dirp);
 
 #endif

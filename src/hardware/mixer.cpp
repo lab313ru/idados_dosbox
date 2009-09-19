@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mixer.cpp,v 1.47 2007-08-12 19:16:01 c2woody Exp $ */
+/* $Id: mixer.cpp,v 1.53 2009-04-28 21:48:24 harekiet Exp $ */
 
 /* 
 	Remove the sdl code from here and have it handeld in the sdlmain.
@@ -25,7 +25,6 @@
 
 #include <string.h>
 #include <sys/types.h>
-#include <dirent.h>
 #include <math.h>
 
 #if defined (WIN32)
@@ -55,27 +54,13 @@
 #define MIXER_REMAIN ((1<<MIXER_SHIFT)-1)
 #define MIXER_VOLSHIFT 13
 
-static inline Bit16s MIXER_CLIP(Bits SAMP) {
+static INLINE Bit16s MIXER_CLIP(Bits SAMP) {
 	if (SAMP < MAX_AUDIO) {
 		if (SAMP > MIN_AUDIO)
 			return SAMP;
 		else return MIN_AUDIO;
 	} else return MAX_AUDIO;
 }
-
-struct MIXER_Channel {
-	double vol_main[2];
-	Bits vol_mul[2];
-	Bit8u mode;
-	Bitu freq;
-	char * name;
-	MIXER_MixHandler handler;
-	Bitu sample_add;
-	Bitu sample_left;
-	Bitu remain;
-	bool playing;
-	MIXER_Channel * next;
-};
 
 static struct {
 	Bit32s work[MIXER_BUFSIZE][2];
@@ -93,6 +78,7 @@ Bit8u MixTemp[MIXER_BUFSIZE];
 
 MixerChannel * MIXER_AddChannel(MIXER_Handler handler,Bitu freq,const char * name) {
 	MixerChannel * chan=new MixerChannel();
+	chan->scale = 1.0;
 	chan->handler=handler;
 	chan->name=name;
 	chan->SetFreq(freq);
@@ -127,13 +113,18 @@ void MIXER_DelChannel(MixerChannel* delchan) {
 }
 
 void MixerChannel::UpdateVolume(void) {
-	volmul[0]=(Bits)((1 << MIXER_VOLSHIFT)*volmain[0]*mixer.mastervol[0]);
-	volmul[1]=(Bits)((1 << MIXER_VOLSHIFT)*volmain[1]*mixer.mastervol[1]);
+	volmul[0]=(Bits)((1 << MIXER_VOLSHIFT)*scale*volmain[0]*mixer.mastervol[0]);
+	volmul[1]=(Bits)((1 << MIXER_VOLSHIFT)*scale*volmain[1]*mixer.mastervol[1]);
 }
 
 void MixerChannel::SetVolume(float _left,float _right) {
 	volmain[0]=_left;
 	volmain[1]=_right;
+	UpdateVolume();
+}
+
+void MixerChannel::SetScale( float f ) {
+	scale = f;
 	UpdateVolume();
 }
 
@@ -174,19 +165,15 @@ void MixerChannel::AddSilence(void) {
 	}
 }
 
-template<bool _8bits,bool stereo,bool signeddata>
-INLINE void MixerChannel::AddSamples(Bitu len,void * data) {
+template<class Type,bool stereo,bool signeddata,bool nativeorder>
+inline void MixerChannel::AddSamples(Bitu len, const Type* data) {
 	Bits diff[2];
-	Bit8u * data8=(Bit8u*)data;
-	Bit8s * data8s=(Bit8s*)data;
-	Bit16s * data16=(Bit16s*)data;
-	Bit16u * data16u=(Bit16u*)data;
 	Bitu mixpos=mixer.pos+done;
 	freq_index&=MIXER_REMAIN;
 	Bitu pos=0;Bitu new_pos;
 
 	goto thestart;
-	while (1) {
+	for (;;) {
 		new_pos=freq_index >> MIXER_SHIFT;
 		if (pos<new_pos) {
 			last[0]+=diff[0];
@@ -194,36 +181,73 @@ INLINE void MixerChannel::AddSamples(Bitu len,void * data) {
 			pos=new_pos;
 thestart:
 			if (pos>=len) return;
-			if (_8bits) {
+			if ( sizeof( Type) == 1) {
 				if (!signeddata) {
 					if (stereo) {
-						diff[0]=(((Bit8s)(data8[pos*2+0] ^ 0x80)) << 8)-last[0];
-						diff[1]=(((Bit8s)(data8[pos*2+1] ^ 0x80)) << 8)-last[1];
+						diff[0]=(((Bit8s)(data[pos*2+0] ^ 0x80)) << 8)-last[0];
+						diff[1]=(((Bit8s)(data[pos*2+1] ^ 0x80)) << 8)-last[1];
 					} else {
-						diff[0]=(((Bit8s)(data8[pos] ^ 0x80)) << 8)-last[0];
+						diff[0]=(((Bit8s)(data[pos] ^ 0x80)) << 8)-last[0];
 					}
 				} else {
 					if (stereo) {
-						diff[0]=(data8s[pos*2+0] << 8)-last[0];
-						diff[1]=(data8s[pos*2+1] << 8)-last[1];
+						diff[0]=(data[pos*2+0] << 8)-last[0];
+						diff[1]=(data[pos*2+1] << 8)-last[1];
 					} else {
-						diff[0]=(data8s[pos] << 8)-last[0];
+						diff[0]=(data[pos] << 8)-last[0];
 					}
 				}
-			} else {
+			//16bit and 32bit both contain 16bit data internally
+			} else  {
 				if (signeddata) {
 					if (stereo) {
-						diff[0]=data16[pos*2+0]-last[0];
-						diff[1]=data16[pos*2+1]-last[1];
+						if (nativeorder) {
+							diff[0]=data[pos*2+0]-last[0];
+							diff[1]=data[pos*2+1]-last[1];
+						} else {
+							if ( sizeof( Type) == 2) {
+								diff[0]=(Bit16s)host_readw((HostPt)&data[pos*2+0])-last[0];
+								diff[1]=(Bit16s)host_readw((HostPt)&data[pos*2+1])-last[1];
+							} else {
+								diff[0]=(Bit32s)host_readd((HostPt)&data[pos*2+0])-last[0];
+								diff[1]=(Bit32s)host_readd((HostPt)&data[pos*2+1])-last[1];
+							}
+						}
 					} else {
-						diff[0]=data16[pos]-last[0];
+						if (nativeorder) {
+							diff[0]=data[pos]-last[0];
+						} else {
+							if ( sizeof( Type) == 2) {
+								diff[0]=(Bit16s)host_readw((HostPt)&data[pos])-last[0];
+							} else {
+								diff[0]=(Bit32s)host_readd((HostPt)&data[pos])-last[0];
+							}
+						}
 					}
 				} else {
 					if (stereo) {
-						diff[0]=(Bits)data16u[pos*2+0]-32768-last[0];
-						diff[1]=(Bits)data16u[pos*2+1]-32768-last[1];
+						if (nativeorder) {
+							diff[0]=(Bits)data[pos*2+0]-32768-last[0];
+							diff[1]=(Bits)data[pos*2+1]-32768-last[1];
+						} else {
+							if ( sizeof( Type) == 2) {
+								diff[0]=(Bits)host_readw((HostPt)&data[pos*2+0])-32768-last[0];
+								diff[1]=(Bits)host_readw((HostPt)&data[pos*2+1])-32768-last[1];
+							} else {
+								diff[0]=(Bits)host_readd((HostPt)&data[pos*2+0])-32768-last[0];
+								diff[1]=(Bits)host_readd((HostPt)&data[pos*2+1])-32768-last[1];
+							}
+						}
 					} else {
-						diff[0]=(Bits)data16u[pos]-32768-last[0];
+						if (nativeorder) {
+							diff[0]=(Bits)data[pos]-32768-last[0];
+						} else {
+							if ( sizeof( Type) == 2) {
+								diff[0]=(Bits)host_readw((HostPt)&data[pos])-32768-last[0];
+							} else {
+								diff[0]=(Bits)host_readd((HostPt)&data[pos])-32768-last[0];
+							}
+						}
 					}
 				}
 			}
@@ -265,31 +289,55 @@ void MixerChannel::AddStretched(Bitu len,Bit16s * data) {
 		mixer.work[mixpos][1]+=sample*volmul[1];
 		mixpos++;
 	}
-};
+}
 
-void MixerChannel::AddSamples_m8(Bitu len,Bit8u * data) {
-	AddSamples<true,false,false>(len,data);
+void MixerChannel::AddSamples_m8(Bitu len, const Bit8u * data) {
+	AddSamples<Bit8u,false,false,true>(len,data);
 }
-void MixerChannel::AddSamples_s8(Bitu len,Bit8u * data) {
-	AddSamples<true,true,false>(len,data);
+void MixerChannel::AddSamples_s8(Bitu len,const Bit8u * data) {
+	AddSamples<Bit8u,true,false,true>(len,data);
 }
-void MixerChannel::AddSamples_m8s(Bitu len,Bit8s * data) {
-	AddSamples<true,false,true>(len,data);
+void MixerChannel::AddSamples_m8s(Bitu len,const Bit8s * data) {
+	AddSamples<Bit8s,false,true,true>(len,data);
 }
-void MixerChannel::AddSamples_s8s(Bitu len,Bit8s * data) {
-	AddSamples<true,true,true>(len,data);
+void MixerChannel::AddSamples_s8s(Bitu len,const Bit8s * data) {
+	AddSamples<Bit8s,true,true,true>(len,data);
 }
-void MixerChannel::AddSamples_m16(Bitu len,Bit16s * data) {
-	AddSamples<false,false,true>(len,data);
+void MixerChannel::AddSamples_m16(Bitu len,const Bit16s * data) {
+	AddSamples<Bit16s,false,true,true>(len,data);
 }
-void MixerChannel::AddSamples_s16(Bitu len,Bit16s * data) {
-	AddSamples<false,true,true>(len,data);
+void MixerChannel::AddSamples_s16(Bitu len,const Bit16s * data) {
+	AddSamples<Bit16s,true,true,true>(len,data);
 }
-void MixerChannel::AddSamples_m16u(Bitu len,Bit16u * data) {
-	AddSamples<false,false,false>(len,data);
+void MixerChannel::AddSamples_m16u(Bitu len,const Bit16u * data) {
+	AddSamples<Bit16u,false,false,true>(len,data);
 }
-void MixerChannel::AddSamples_s16u(Bitu len,Bit16u * data) {
-	AddSamples<false,true,false>(len,data);
+void MixerChannel::AddSamples_s16u(Bitu len,const Bit16u * data) {
+	AddSamples<Bit16u,true,false,true>(len,data);
+}
+void MixerChannel::AddSamples_m32(Bitu len,const Bit32s * data) {
+	AddSamples<Bit32s,false,true,true>(len,data);
+}
+void MixerChannel::AddSamples_s32(Bitu len,const Bit32s * data) {
+	AddSamples<Bit32s,true,true,true>(len,data);
+}
+void MixerChannel::AddSamples_m16_nonnative(Bitu len,const Bit16s * data) {
+	AddSamples<Bit16s,false,true,false>(len,data);
+}
+void MixerChannel::AddSamples_s16_nonnative(Bitu len,const Bit16s * data) {
+	AddSamples<Bit16s,true,true,false>(len,data);
+}
+void MixerChannel::AddSamples_m16u_nonnative(Bitu len,const Bit16u * data) {
+	AddSamples<Bit16u,false,false,false>(len,data);
+}
+void MixerChannel::AddSamples_s16u_nonnative(Bitu len,const Bit16u * data) {
+	AddSamples<Bit16u,true,false,false>(len,data);
+}
+void MixerChannel::AddSamples_m32_nonnative(Bitu len,const Bit32s * data) {
+	AddSamples<Bit32s,false,true,false>(len,data);
+}
+void MixerChannel::AddSamples_s32_nonnative(Bitu len,const Bit32s * data) {
+	AddSamples<Bit32s,true,true,false>(len,data);
 }
 
 void MixerChannel::FillUp(void) {

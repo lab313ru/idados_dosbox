@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: bios.cpp,v 1.68 2007-06-12 20:22:08 c2woody Exp $ */
+/* $Id: bios.cpp,v 1.74 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -320,26 +320,55 @@ static Bitu INT11_Handler(void) {
 	reg_ax=mem_readw(BIOS_CONFIGURATION);
 	return CBRET_NONE;
 }
-
+/* 
+ * Define the following define to 1 if you want dosbox to check 
+ * the system time every 5 seconds and adjust 1/2 a second to sync them.
+ */
+#ifndef DOSBOX_CLOCKSYNC
+#define DOSBOX_CLOCKSYNC 0
+#endif
 static Bitu INT8_Handler(void) {
 	/* Increase the bios tick counter */
-	mem_writed(BIOS_TIMER,mem_readd(BIOS_TIMER)+1);
+	Bit32u value = mem_readd(BIOS_TIMER) + 1;
+#if DOSBOX_CLOCKSYNC
+	static bool check = false;
+	if((value %50)==0) {
+		if(((value %100)==0) && check) {
+			check = false;
+			time_t curtime;struct tm *loctime;
+			curtime = time (NULL);loctime = localtime (&curtime);
+			Bit32u ticksnu = (Bit32u)((loctime->tm_hour*3600+loctime->tm_min*60+loctime->tm_sec)*(float)PIT_TICK_RATE/65536.0);
+			Bit32s bios = value;Bit32s tn = ticksnu;
+			Bit32s diff = tn - bios;
+			if(diff>0) {
+				if(diff < 18) { diff  = 0; } else diff = 9;
+			} else {
+				if(diff > -18) { diff = 0; } else diff = -9;
+			}
+	     
+			value += diff;
+		} else if((value%100)==50) check = true;
+	}
+#endif
+	mem_writed(BIOS_TIMER,value);
+
 	/* decrease floppy motor timer */
 	Bit8u val = mem_readb(BIOS_DISK_MOTOR_TIMEOUT);
 	if (val) mem_writeb(BIOS_DISK_MOTOR_TIMEOUT,val-1);
 	/* and running drive */
 	mem_writeb(BIOS_DRIVE_RUNNING,mem_readb(BIOS_DRIVE_RUNNING) & 0xF0);
 	return CBRET_NONE;
-};
+}
+#undef DOSBOX_CLOCKSYNC
 
 static Bitu INT1C_Handler(void) {
 	return CBRET_NONE;
-};
+}
 
 static Bitu INT12_Handler(void) {
 	reg_ax=mem_readw(BIOS_MEMORY_SIZE);
 	return CBRET_NONE;
-};
+}
 
 static Bitu INT17_Handler(void) {
 	LOG(LOG_BIOS,LOG_NORMAL)("INT17:Function %X",reg_ah);
@@ -431,7 +460,6 @@ static Bitu INT14_Handler(void)
 				// get result
 				reg_ah=IO_ReadB(port+5);
 				if(timeout) reg_ah |= 0x80;
-				reg_al=IO_ReadB(port+6);
 			}
 			CALLBACK_SCF(false);
 		}
@@ -445,7 +473,7 @@ static Bitu INT14_Handler(void)
 				// switch modem lines on
 				IO_WriteB(port+4,0x3);
 				// wait for something
-				timeout = !serialports[reg_dx]->Getchar(&buffer,true, 
+				timeout = !serialports[reg_dx]->Getchar(&buffer,&reg_ah,true, 
 					mem_readb(BIOS_COM1_TIMEOUT+reg_dx)*1000);
 
 				// RTS off
@@ -596,8 +624,8 @@ static Bitu INT15_Handler(void) {
 			MEM_A20_Enable(true);
 			Bitu   bytes	= reg_cx * 2;
 			PhysPt data		= SegPhys(es)+reg_si;
-			PhysPt source	= mem_readd(data+0x12) & 0x00FFFFFF + (mem_readb(data+0x16)<<24);
-			PhysPt dest		= mem_readd(data+0x1A) & 0x00FFFFFF + (mem_readb(data+0x1E)<<24);
+			PhysPt source	= (mem_readd(data+0x12) & 0x00FFFFFF) + (mem_readb(data+0x16)<<24);
+			PhysPt dest		= (mem_readd(data+0x1A) & 0x00FFFFFF) + (mem_readb(data+0x1E)<<24);
 			MEM_BlockCopy(dest,source,bytes);
 			reg_ax = 0x00;
 			MEM_A20_Enable(enabled);
@@ -705,11 +733,29 @@ static Bitu INT15_Handler(void) {
 		LOG(LOG_BIOS,LOG_ERROR)("INT15:Unknown call %4X",reg_ax);
 		reg_ah=0x86;
 		CALLBACK_SCF(true);
-		if ((machine==MCH_VGA) || (machine==MCH_CGA)) {
+		if ((IS_EGAVGA_ARCH) || (machine==MCH_CGA)) {
 			/* relict from comparisons, as int15 exits with a retf2 instead of an iret */
 			CALLBACK_SZF(false);
 		}
 	}
+	return CBRET_NONE;
+}
+
+static Bitu Reboot_Handler(void) {
+	// switch to text mode, notify user (let's hope INT10 still works)
+	const char* const text = "\n\n   Reboot requested, quitting now.";
+	reg_ax = 0;
+	CALLBACK_RunRealInt(0x10);
+	reg_ah = 0xe;
+	reg_bx = 0;
+	for(Bitu i = 0; i < strlen(text);i++) {
+		reg_al = text[i];
+		CALLBACK_RunRealInt(0x10);
+	}
+	LOG_MSG(text);
+	double start = PIC_FullIndex();
+	while((PIC_FullIndex()-start)<3000) CALLBACK_Idle();
+	throw 1;
 	return CBRET_NONE;
 }
 
@@ -731,7 +777,7 @@ void BIOS_SetupDisks(void);
 
 class BIOS:public Module_base{
 private:
-	CALLBACK_HandlerObject callback[10];
+	CALLBACK_HandlerObject callback[11];
 public:
 	BIOS(Section* configuration):Module_base(configuration){
 		/* tandy DAC can be requested in tandy_sound.cpp by initializing this field */
@@ -787,7 +833,7 @@ public:
 		BIOS_SetupKeyboard();
 
 		/* INT 17 Printer Routines */
-		callback[5].Install(&INT17_Handler,CB_IRET,"Int 17 Printer");
+		callback[5].Install(&INT17_Handler,CB_IRET_STI,"Int 17 Printer");
 		callback[5].Set_RealVec(0x17);
 
 		/* INT 1A TIME and some other functions */
@@ -806,6 +852,16 @@ public:
 		callback[9].Install(NULL,CB_IRQ9,"irq 9 bios");
 		callback[9].Set_RealVec(0x71);
 
+		/* Reboot */
+		callback[10].Install(&Reboot_Handler,CB_IRET,"reboot");
+		callback[10].Set_RealVec(0x18);
+		RealPt rptr = callback[10].Get_RealPointer();
+		RealSetVec(0x19,rptr);
+		// set system BIOS entry point too
+		phys_writeb(0xFFFF0,0xEA);	// FARJMP
+		phys_writew(0xFFFF1,RealOff(rptr));	// offset
+		phys_writew(0xFFFF3,RealSeg(rptr));	// segment
+
 		/* Irq 2 */
 		RealPt irq2pt=RealMake(0xf000,0xff55);	/* Ghost busters 2 mt32 mode */
 		Bitu call_irq2=CALLBACK_Allocate();	
@@ -821,6 +877,21 @@ public:
 		if (machine==MCH_TANDY) phys_writeb(0xffffe,0xff)	;	/* Tandy model */
 		else if (machine==MCH_PCJR) phys_writeb(0xffffe,0xfd);	/* PCJr model */
 		else phys_writeb(0xffffe,0xfc);	/* PC */
+
+		// System BIOS identification
+		const char* const b_type =
+			"IBM COMPATIBLE 486 BIOS COPYRIGHT The DOSBox Team.";
+		for(Bitu i = 0; i < strlen(b_type); i++) phys_writeb(0xfe00e + i,b_type[i]);
+		
+		// System BIOS version
+		const char* const b_vers =
+			"DOSBox FakeBIOS v1.0";
+		for(Bitu i = 0; i < strlen(b_vers); i++) phys_writeb(0xfe061+i,b_vers[i]);
+
+		// write system BIOS date
+		const char* const b_date = "01/01/92";
+		for(Bitu i = 0; i < strlen(b_date); i++) phys_writeb(0xffff5+i,b_date[i]);
+		phys_writeb(0xfffff,0x55); // signature
 
 		if (use_tandyDAC) {
 			/* tandy DAC sound requested, see if soundblaster device is available */
@@ -917,7 +988,7 @@ public:
 			//Startup monochrome
 			config|=0x30;
 			break;
-		case MCH_VGA:
+		case EGAVGA_ARCH_CASE:
 		case MCH_CGA:
 		case TANDY_ARCH_CASE:
 			//Startup 80x25 color

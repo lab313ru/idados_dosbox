@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_iso.cpp,v 1.21 2007-08-22 11:54:35 qbix79 Exp $ */
+/* $Id: drive_iso.cpp,v 1.25 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include <cctype>
 #include <cstring>
@@ -161,56 +161,16 @@ isoDrive::isoDrive(char driveLetter, const char *fileName, Bit8u mediaid, int &e
 			this->mediaid = mediaid;
 			char buffer[32] = { 0 };
 			if (!MSCDEX_GetVolumeName(subUnit, buffer)) strcpy(buffer, "");
+			Set_Label(buffer,discLabel,true);
 
-			//Code Copied from drive_cache. (convert mscdex label to a dos 8.3 file)
-			Bitu togo	= 8;
-			Bitu bufPos	= 0;
-			Bitu labelPos	= 0;
-			bool point	= false;
-			while (togo>0) {
-				if (buffer[bufPos]==0) break;
-				if (!point && (buffer[bufPos]=='.')) { togo=4; point=true; }
-				discLabel[labelPos] = toupper(buffer[bufPos]);
-				labelPos++; bufPos++;
-				togo--;
-				if ((togo==0) && !point) {
-					if (buffer[bufPos]=='.') bufPos++;
-					discLabel[labelPos]='.'; labelPos++; point=true; togo=3;
-				}
-			};
-			discLabel[labelPos]=0;
-			//Remove trailing dot.
-			if((labelPos > 0) && (discLabel[labelPos - 1] == '.'))
-				discLabel[labelPos - 1] = 0;
 		} else if (CDROM_Interface_Image::images[subUnit]->HasDataTrack() == false) { //Audio only cdrom
 			strcpy(info, "isoDrive ");
 			strcat(info, fileName);
 			this->driveLetter = driveLetter;
 			this->mediaid = mediaid;
 			char buffer[32] = { 0 };
-			strcpy(buffer, "Audio CD");
-
-			//Code Copied from drive_cache. (convert mscdex label to a dos 8.3 file)
-			Bitu togo	= 8;
-			Bitu bufPos	= 0;
-			Bitu labelPos	= 0;
-			bool point	= false;
-			while (togo>0) {
-				if (buffer[bufPos]==0) break;
-				if (!point && (buffer[bufPos]=='.')) { togo=4; point=true; }
-				discLabel[labelPos] = toupper(buffer[bufPos]);
-				labelPos++; bufPos++;
-				togo--;
-				if ((togo==0) && !point) {
-					if (buffer[bufPos]=='.') bufPos++;
-					discLabel[labelPos]='.'; labelPos++; point=true; togo=3;
-				}
-			};
-			discLabel[labelPos]=0;
-			//Remove trailing dot.
-			if((labelPos > 0) && (discLabel[labelPos - 1] == '.'))
-				discLabel[labelPos - 1] = 0;
-
+			strcpy(buffer, "Audio_CD");
+			Set_Label(buffer,discLabel,true);
 		} else error = 6; //Corrupt image
 	}
 }
@@ -541,18 +501,27 @@ int isoDrive :: readDirEntry(isoDirEntry *de, Bit8u *data)
 		if (de->fileIdentLength == 1 && de->ident[0] == 0) strcpy((char*)de->ident, ".");
 		else if (de->fileIdentLength == 1 && de->ident[0] == 1) strcpy((char*)de->ident, "..");
 		else {
-			if (de->fileIdentLength > 31) return -1;
+			if (de->fileIdentLength > 200) return -1;
 			de->ident[de->fileIdentLength] = 0;
 		}
 	} else {
-		if (de->fileIdentLength > 37) return -1;
+		if (de->fileIdentLength > 200) return -1;
 		de->ident[de->fileIdentLength] = 0;	
 		// remove any file version identifiers as there are some cdroms that don't have them
 		strreplace((char*)de->ident, ';', 0);	
 		// if file has no extension remove the trailing dot
-		int tmp = strlen((char*)de->ident);
-		if (tmp > 0 && de->ident[tmp - 1] == '.') de->ident[tmp - 1] = 0;
+		size_t tmp = strlen((char*)de->ident);
+		if (tmp > 0) {
+			if (de->ident[tmp - 1] == '.') de->ident[tmp - 1] = 0;
+		}
 	}
+	const char* dotpos = strchr((char*)de->ident, '.');
+	if (dotpos!=NULL) {
+		if (dotpos-(char*)de->ident>8) {
+			strcpy((char*)(&de->ident[8]),dotpos);
+		}
+	}
+	if (strlen((char*)de->ident)>12) de->ident[12]=0;
 	return de->length;
 }
 
@@ -587,8 +556,10 @@ bool isoDrive :: lookup(isoDirEntry *de, const char *path)
 		if (IS_DIR(de->fileFlags)) {
 			
 			// remove the trailing dot if present
-			int nameLength = strlen(name);
-			if (nameLength > 0 && name[nameLength - 1] == '.') name[nameLength - 1] = 0;
+			size_t nameLength = strlen(name);
+			if (nameLength > 0) {
+				if (name[nameLength - 1] == '.') name[nameLength - 1] = 0;
+			}
 			
 			// look for the current path element
 			int dirIterator = GetDirIterator(de);

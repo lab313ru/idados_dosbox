@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_inc.h,v 1.70 2007-07-20 18:53:52 qbix79 Exp $ */
+/* $Id: dos_inc.h,v 1.78 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #ifndef DOSBOX_DOS_INC_H
 #define DOSBOX_DOS_INC_H
@@ -77,13 +77,16 @@ enum { RETURN_EXIT=0,RETURN_CTRLC=1,RETURN_ABORT=2,RETURN_TSR=3};
 #define DOS_DEVICES 10
 
 
-#define DOS_INFOBLOCK_SEG 0x80
-#define DOS_CDS_SEG 0x90
-#define DOS_CONSTRING_SEG 0xa0
-#define DOS_CONDRV_SEG 0xa4
-#define DOS_SDA_SEG 0xb2
+// dos swappable area is 0x320 bytes beyond the sysvars table
+// device driver chain is inside sysvars
+#define DOS_INFOBLOCK_SEG 0x80	// sysvars (list of lists)
+#define DOS_CONDRV_SEG 0xa0
+#define DOS_CONSTRING_SEG 0xa8
+#define DOS_SDA_SEG 0xb2		// dos swappable area
 #define DOS_SDA_OFS 0
-#define DOS_MEM_START 0x102					//First Segment that DOS can use
+#define DOS_CDS_SEG 0x108
+#define DOS_FIRST_SHELL 0x118
+#define DOS_MEM_START 0x158		//First Segment that DOS can use
 
 #define DOS_PRIVATE_SEGMENT 0xc800
 #define DOS_PRIVATE_SEGMENT_END 0xd000
@@ -110,6 +113,7 @@ bool DOS_ReadFile(Bit16u handle,Bit8u * data,Bit16u * amount);
 bool DOS_WriteFile(Bit16u handle,Bit8u * data,Bit16u * amount);
 bool DOS_SeekFile(Bit16u handle,Bit32u * pos,Bit32u type);
 bool DOS_CloseFile(Bit16u handle);
+bool DOS_FlushFile(Bit16u handle);
 bool DOS_DuplicateEntry(Bit16u entry,Bit16u * newentry);
 bool DOS_ForceDuplicateEntry(Bit16u entry,Bit16u newentry);
 bool DOS_GetFileDate(Bit16u entry, Bit16u* otime, Bit16u* odate);
@@ -150,7 +154,7 @@ void DOS_SetupDevices(void);
 bool DOS_NewPSP(Bit16u pspseg,Bit16u size);
 bool DOS_ChildPSP(Bit16u pspseg,Bit16u size);
 bool DOS_Execute(char * name,PhysPt block,Bit8u flags);
-bool DOS_Terminate(bool tsr);
+bool DOS_Terminate(bool tsr,Bit8u exitcode);
 
 /* Memory Handling Routines */
 void DOS_SetupMemory(void);
@@ -204,18 +208,18 @@ enum {
 };
 
 
-INLINE Bit16u long2para(Bit32u size) {
+static INLINE Bit16u long2para(Bit32u size) {
 	if (size>0xFFFF0) return 0xffff;
 	if (size&0xf) return (Bit16u)((size>>4)+1);
 	else return (Bit16u)(size>>4);
 }
 
 
-INLINE Bit16u DOS_PackTime(Bit16u hour,Bit16u min,Bit16u sec) {
+static INLINE Bit16u DOS_PackTime(Bit16u hour,Bit16u min,Bit16u sec) {
 	return (hour&0x1f)<<11 | (min&0x3f) << 5 | ((sec/2)&0x1f);
 }
 
-INLINE Bit16u DOS_PackDate(Bit16u year,Bit16u mon,Bit16u day) {
+static INLINE Bit16u DOS_PackDate(Bit16u year,Bit16u mon,Bit16u day) {
 	return ((year-1980)&0x7f)<<9 | (mon&0x3f) << 5 | (day&0x1f);
 }
 
@@ -250,7 +254,7 @@ INLINE Bit16u DOS_PackDate(Bit16u year,Bit16u mon,Bit16u day) {
 
 class MemStruct {
 public:
-	INLINE Bitu GetIt(Bitu size,PhysPt addr) {
+	Bitu GetIt(Bitu size,PhysPt addr) {
 		switch (size) {
 		case 1:return mem_readb(pt+addr);
 		case 2:return mem_readw(pt+addr);
@@ -258,16 +262,16 @@ public:
 		}
 		return 0;
 	}
-	INLINE void SaveIt(Bitu size,PhysPt addr,Bitu val) {
+	void SaveIt(Bitu size,PhysPt addr,Bitu val) {
 		switch (size) {
 		case 1:mem_writeb(pt+addr,(Bit8u)val);break;
 		case 2:mem_writew(pt+addr,(Bit16u)val);break;
 		case 4:mem_writed(pt+addr,(Bit32u)val);break;
 		}
 	}
-	INLINE void SetPt(Bit16u seg) { pt=PhysMake(seg,0);}
-	INLINE void SetPt(Bit16u seg,Bit16u off) { pt=PhysMake(seg,off);}
-	INLINE void SetPt(RealPt addr) { pt=Real2Phys(addr);}
+	void SetPt(Bit16u seg) { pt=PhysMake(seg,0);}
+	void SetPt(Bit16u seg,Bit16u off) { pt=PhysMake(seg,off);}
+	void SetPt(RealPt addr) { pt=Real2Phys(addr);}
 protected:
 	PhysPt pt;
 };
@@ -502,6 +506,7 @@ public:
 	bool Extended(void);
 	void GetAttr(Bit8u & attr);
 	void SetAttr(Bit8u attr);
+	bool Valid(void);
 private:
 	bool extended;
 	PhysPt real_pt;
@@ -630,7 +635,7 @@ struct DOS_Block {
 
 extern DOS_Block dos;
 
-INLINE Bit8u RealHandle(Bit16u handle) {
+static Bit8u RealHandle(Bit16u handle) {
 	DOS_PSP psp(dos.psp());	
 	return psp.GetFileHandle(handle);
 }

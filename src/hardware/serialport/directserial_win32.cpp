@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: directserial_win32.cpp,v 1.5 2007-01-13 08:35:49 qbix79 Exp $ */
+/* $Id: directserial_win32.cpp,v 1.8 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 
@@ -39,7 +39,7 @@
 CDirectSerial::CDirectSerial (Bitu id, CommandLine* cmd)
 					:CSerial (id, cmd) {
 	InstallationSuccessful = false;
-
+	hCom = INVALID_HANDLE_VALUE; // else destructor may close an invalid handle
 	rx_retry = 0;
     rx_retry_max = 0;
 
@@ -96,7 +96,7 @@ CDirectSerial::CDirectSerial (Bitu id, CommandLine* cmd)
 
 	if (!fSuccess) {
 		// Handle the error.
-		LOG_MSG ("GetCommState failed with error %d.\n", GetLastError ());
+		LOG_MSG ("GetCommState failed with error %d.\n", (int)GetLastError ());
 		hCom = INVALID_HANDLE_VALUE;
 		return;
 	}
@@ -125,7 +125,7 @@ CDirectSerial::CDirectSerial (Bitu id, CommandLine* cmd)
 
 	if (!fSuccess) {
 		// Handle the error.
-		LOG_MSG ("SetCommState failed with error %d.\n", GetLastError ());
+		LOG_MSG ("SetCommState failed with error %d.\n", (int)GetLastError ());
 		hCom = INVALID_HANDLE_VALUE;
 		return;
 	}
@@ -157,7 +157,6 @@ void CDirectSerial::handleUpperEvent(Bit16u type) {
 	switch(type) {
 		case SERIAL_POLLING_EVENT: {
 			DWORD dwRead = 0;
-			DWORD errors = 0;
 			Bit8u chRead = 0;
 			
 			setEvent(SERIAL_POLLING_EVENT, 1);
@@ -329,12 +328,12 @@ void CDirectSerial::updatePortConfig (Bit16u divider, Bit8u lcr) {
 #endif
 
 		LOG_MSG ("Serial%d: Desired serial mode not supported (%d,%d,%d,%d",
-			dcb.BaudRate,dcb.ByteSize,dcb.Parity,dcb.StopBits, COMNUMBER);
+			(Bit32u)dcb.BaudRate,(Bit32u)dcb.ByteSize,
+			(Bit32u)dcb.Parity,(Bit32u)dcb.StopBits, COMNUMBER);
 	}
 }
 
 void CDirectSerial::updateMSR () {
-	Bit8u newmsr = 0;
 	DWORD dptr = 0;
 
 	if (!GetCommModemStatus (hCom, &dptr)) {

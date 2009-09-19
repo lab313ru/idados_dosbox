@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,11 +16,12 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: vga_s3.cpp,v 1.8 2007-06-28 16:02:27 c2woody Exp $ */
+/* $Id: vga_s3.cpp,v 1.18 2009-03-15 11:28:35 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "inout.h"
 #include "vga.h"
+#include "mem.h"
 
 void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 	switch (reg) {
@@ -28,6 +29,9 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 //TODO Base address
 		vga.s3.reg_31 = val;
 		vga.config.compatible_chain4 = !(val&0x08);
+		if (vga.config.compatible_chain4) vga.vmemwrap = 256*1024;
+ 		else vga.vmemwrap = vga.vmemsize;
+		vga.config.display_start = (vga.config.display_start&~0x30000)|((val&0x30)<<12);
 		VGA_DetermineMode();
 		VGA_SetupHandlers();
 		break;
@@ -48,9 +52,10 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 	case 0x35:	/* CR35 CRT Register Lock */
 		if (vga.s3.reg_lock1 != 0x48) return;	//Needed for uvconfig detection
 		vga.s3.reg_35=val & 0xf0;
-		if ((vga.s3.svga_bank.b.bank & 0xf) ^ (val & 0xf)) {
-			vga.s3.svga_bank.b.bank&=0xf0;
-			vga.s3.svga_bank.b.bank|=val & 0xf;
+		if ((vga.svga.bank_read & 0xf) ^ (val & 0xf)) {
+			vga.svga.bank_read&=0xf0;
+			vga.svga.bank_read|=val & 0xf;
+			vga.svga.bank_write = vga.svga.bank_read;
 			VGA_SetupHandlers();
 		}
 		break;
@@ -70,8 +75,14 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 	case 0x39:	/* CR39 Register Lock 2 */
 		vga.s3.reg_lock2=val;
 		break;
+	case 0x3a:
+		vga.s3.reg_3a = val;
+		break;
 	case 0x40:  /* CR40 System Config */
 		vga.s3.reg_40 = val;
+		break;
+	case 0x41:  /* CR41 BIOS flags */
+		vga.s3.reg_41 = val;
 		break;
 	case 0x43:	/* CR43 Extended Mode */
 		vga.s3.reg_43=val & ~0x4;
@@ -114,25 +125,48 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 		vga.s3.hgc.bstackpos++;
 		break;
 	case 0x4c:  /* HGC start address high byte*/
-		vga.s3.hgc.startaddr = vga.s3.hgc.startaddr | ((val & 0xff) << 8);
+		vga.s3.hgc.startaddr &=0xff;
+		vga.s3.hgc.startaddr |= ((val & 0xf) << 8);
+		if ((((Bitu)vga.s3.hgc.startaddr)<<10)+((64*64*2)/8) > vga.vmemsize) {
+			vga.s3.hgc.startaddr &= 0xff;	// put it back to some sane area;
+											// if read back of this address is ever implemented this needs to change
+			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:S3:CRTC: HGC pattern address beyond video memory" );
+		}
 		break;
 	case 0x4d:  /* HGC start address low byte*/
-		vga.s3.hgc.startaddr = vga.s3.hgc.startaddr | (val & 0xff);
+		vga.s3.hgc.startaddr &=0xff00;
+		vga.s3.hgc.startaddr |= (val & 0xff);
 		break;
 	case 0x4e:  /* HGC pattern start X */
-		vga.s3.hgc.posx = val;
+		vga.s3.hgc.posx = val & 0x3f;	// bits 0-5
 		break;
-	case 0x4f:  /* HGC pattern start X */
-		vga.s3.hgc.posy = val;
+	case 0x4f:  /* HGC pattern start Y */
+		vga.s3.hgc.posy = val & 0x3f;	// bits 0-5
+		break;
+	case 0x50:  // Extended System Control 1
+		vga.s3.reg_50 = val;
+		switch (val & S3_XGA_CMASK) {
+			case S3_XGA_32BPP: vga.s3.xga_color_mode = M_LIN32; break;
+			case S3_XGA_16BPP: vga.s3.xga_color_mode = M_LIN16; break;
+			case S3_XGA_8BPP: vga.s3.xga_color_mode = M_LIN8; break;
+		}
+		switch (val & S3_XGA_WMASK) {
+			case S3_XGA_1024: vga.s3.xga_screen_width = 1024; break;
+			case S3_XGA_1152: vga.s3.xga_screen_width = 1152; break;
+			case S3_XGA_640:  vga.s3.xga_screen_width = 640; break;
+			case S3_XGA_800:  vga.s3.xga_screen_width = 800; break;
+			case S3_XGA_1280: vga.s3.xga_screen_width = 1280; break;
+			default:  vga.s3.xga_screen_width = 1024; break;
+		}
 		break;
 	case 0x51:	/* Extended System Control 2 */
 		vga.s3.reg_51=val & 0xc0;		//Only store bits 6,7
-		//TODO Display start
-		vga.config.display_start&=0xFCFFFF;
-		vga.config.display_start|=(val & 3) << 16;
-		if ((vga.s3.svga_bank.b.bank&0xcf) ^ ((val&0xc)<<2)) {
-			vga.s3.svga_bank.b.bank&=0xcf;
-			vga.s3.svga_bank.b.bank|=(val&0xc)<<2;
+		vga.config.display_start&=0xF3FFFF;
+		vga.config.display_start|=(val & 3) << 18;
+		if ((vga.svga.bank_read&0x30) ^ ((val&0xc)<<2)) {
+			vga.svga.bank_read&=0xcf; 
+			vga.svga.bank_read|=(val&0xc)<<2;
+			vga.svga.bank_write = vga.svga.bank_read;
 			VGA_SetupHandlers();
 		}
 		if (((val & 0x30) ^ (vga.config.scan_len >> 4)) & 0x30) {
@@ -161,17 +195,17 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 			7	(not 864/964) Enable EPROM Write. If set enables flash memory write
 				control to the BIOS ROM address
 		*/
+	case 0x52:  // Extended System Control 1
+		vga.s3.reg_52 = val;
+		break;
 	case 0x53:
-		if((val & 0x10) != (vga.s3.ext_mem_ctrl & 0x10)) {
-			/* Map or unmap MMIO */
-			if ((val & 0x10) != 0) {
-				//LOG_MSG("VGA: Mapping Memory Mapped I/O to 0xA0000");
-//				VGA_MapMMIO();
-			} else {
-//				VGA_UnmapMMIO();
-			}
+		// Map or unmap MMIO
+		// bit 4 = MMIO at A0000
+		// bit 3 = MMIO at LFB + 16M (should be fine if its always enabled for now)
+		if(vga.s3.ext_mem_ctrl!=val) {
+			vga.s3.ext_mem_ctrl = val;
+			VGA_SetupHandlers();
 		}
-		vga.s3.ext_mem_ctrl = val;
 		break;
 	case 0x55:	/* Extended Video DAC Control */
 		vga.s3.reg_55=val;
@@ -229,7 +263,7 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 		}
 		break;
 	case 0x5D:	/* Extended Horizontal Overflow */
-		if ((val & vga.s3.ex_hor_overflow) ^ 3) {
+		if ((val ^ vga.s3.ex_hor_overflow) & 3) {
 			vga.s3.ex_hor_overflow=val;
 			VGA_StartResize();
 		} else vga.s3.ex_hor_overflow=val;
@@ -281,6 +315,11 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 		/*
 			0	VCLK PHS. VCLK Phase With Respect to DCLK. If clear VLKC is inverted
 				DCLK, if set VCLK = DCLK.
+			2-3 (Trio64V+) streams mode
+					00 disable Streams Processor
+					01 overlay secondary stream on VGA-mode background
+					10 reserved
+					11 full Streams Processor operation
 			4-7	Pixel format.
 					0  Mode  0: 8bit (1 pixel/VCLK)
 					1  Mode  8: 8bit (2 pixels/VCLK)
@@ -299,8 +338,12 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 		}
 		break;
 	case 0x6a:	/* Extended System Control 4 */
-		vga.s3.svga_bank.b.bank=val & 0x3f;
+		vga.svga.bank_read=val & 0x7f;
+		vga.svga.bank_write = vga.svga.bank_read;
 		VGA_SetupHandlers();
+		break;
+	case 0x6b:	// BIOS scratchpad: LFB adress
+		vga.s3.reg_6b=(Bit8u)val;
 		break;
 	default:
 		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:S3:CRTC:Write to illegal index %2X", reg );
@@ -310,45 +353,66 @@ void SVGA_S3_WriteCRTC(Bitu reg,Bitu val,Bitu iolen) {
 
 Bitu SVGA_S3_ReadCRTC( Bitu reg, Bitu iolen) {
 	switch (reg) {
-	case 0x2d:	/* Extended Chip ID. */
+	case 0x24:	/* attribute controller index (read only) */
+	case 0x26:
+		return (vga.attr.enabled?0x20:0x00) | (vga.attr.index&0x1f);
+	case 0x2d:	/* Extended Chip ID (high byte of PCI device ID) */
 		return 0x88;
-		//	Always 88h ?
-	case 0x2e:	/* New Chip ID */
-		return 0x11;		
-		//Trio 64 id
+	case 0x2e:	/* New Chip ID  (low byte of PCI device ID) */
+		return 0x11;	// Trio64	
 	case 0x2f:	/* Revision */
-		return 0x00;
+		return 0x00;	// Trio64 (exact value?)
+//		return 0x44;	// Trio64 V+
 	case 0x30:	/* CR30 Chip ID/REV register */
-		return 0xe0;		//Trio+ dual byte
-		// Trio32/64 has 0xe0. extended
+		return 0xe1;	// Trio+ dual byte
 	case 0x31:	/* CR31 Memory Configuration */
 //TODO mix in bits from baseaddress;
 		return 	vga.s3.reg_31;	
 	case 0x35:	/* CR35 CRT Register Lock */
-		return vga.s3.reg_35|(vga.s3.svga_bank.b.bank & 0xf);
+		return vga.s3.reg_35|(vga.svga.bank_read & 0xf);
 	case 0x36: /* CR36 Reset State Read 1 */
-		//return 0x8f;
-		return 0x8e; /* PCI version */
-		//2 Mb PCI and some bios settings
+		return vga.s3.reg_36;
 	case 0x37: /* Reset state read 2 */
 		return 0x2b;
 	case 0x38: /* CR38 Register Lock 1 */
 		return vga.s3.reg_lock1;
 	case 0x39: /* CR39 Register Lock 2 */
 		return vga.s3.reg_lock2;
+	case 0x3a:
+		return vga.s3.reg_3a;
 	case 0x40: /* CR40 system config */
 		return vga.s3.reg_40;
+	case 0x41: /* CR40 system config */
+		return vga.s3.reg_41;
+	case 0x42: // not interlaced
+		return 0x0d;
 	case 0x43:	/* CR43 Extended Mode */
 		return vga.s3.reg_43|((vga.config.scan_len>>6)&0x4);
 	case 0x45:  /* Hardware cursor mode */
 		vga.s3.hgc.bstackpos = 0;
 		vga.s3.hgc.fstackpos = 0;
-		return vga.s3.hgc.curmode;
+		return vga.s3.hgc.curmode|0xa0;
+	case 0x46:
+		return vga.s3.hgc.originx>>8;
+	case 0x47:  /*  HGC orgX */
+		return vga.s3.hgc.originx&0xff;
+	case 0x48:
+		return vga.s3.hgc.originy>>8;
+	case 0x49:  /*  HGC orgY */
+		return vga.s3.hgc.originy&0xff;
+	case 0x4A:  /* HGC foreground stack */
+		return vga.s3.hgc.forestack[vga.s3.hgc.fstackpos];
+	case 0x4B:  /* HGC background stack */
+		return vga.s3.hgc.backstack[vga.s3.hgc.bstackpos];
+	case 0x50:	// CR50 Extended System Control 1
+		return vga.s3.reg_50;
 	case 0x51:	/* Extended System Control 2 */
 		return ((vga.config.display_start >> 16) & 3 ) |
-				((vga.s3.svga_bank.b.bank & 0x30) >> 2) |
+				((vga.svga.bank_read & 0x30) >> 2) |
 				((vga.config.scan_len & 0x300) >> 4) |
 				vga.s3.reg_51;
+	case 0x52:	// CR52 Extended BIOS flags 1
+		return vga.s3.reg_52;
 	case 0x53:
 		return vga.s3.ext_mem_ctrl;
 	case 0x55:	/* Extended Video DAC Control */
@@ -368,7 +432,9 @@ Bitu SVGA_S3_ReadCRTC( Bitu reg, Bitu iolen) {
 	case 0x69:	/* Extended System Control 3 */
 		return (Bit8u)((vga.config.display_start & 0x1f0000)>>16); 
 	case 0x6a:	/* Extended System Control 4 */
-		return (Bit8u)(vga.s3.svga_bank.b.bank & 0x3f);
+		return (Bit8u)(vga.svga.bank_read & 0x7f);
+	case 0x6b:	// BIOS scatchpad: LFB address
+		return vga.s3.reg_6b; 
 	default:
 		return 0x00;
 	}
@@ -437,6 +503,64 @@ Bitu SVGA_S3_GetClock(void) {
 		clock = 28322000;
 	else 
 		clock=1000*S3_CLOCK(vga.s3.clk[clock].m,vga.s3.clk[clock].n,vga.s3.clk[clock].r);
+	/* Check for dual transfer, master clock/2 */
+	if (vga.s3.pll.cmd & 0x10) clock/=2;
 	return clock;
 }
 
+bool SVGA_S3_HWCursorActive(void) {
+	return (vga.s3.hgc.curmode & 0x1) != 0;
+}
+
+bool SVGA_S3_AcceptsMode(Bitu mode) {
+	return VideoModeMemSize(mode) < vga.vmemsize;
+}
+
+void SVGA_Setup_S3Trio(void) {
+	svga.write_p3d5 = &SVGA_S3_WriteCRTC;
+	svga.read_p3d5 = &SVGA_S3_ReadCRTC;
+	svga.write_p3c5 = &SVGA_S3_WriteSEQ;
+	svga.read_p3c5 = &SVGA_S3_ReadSEQ;
+	svga.write_p3c0 = 0; /* no S3-specific functionality */
+	svga.read_p3c1 = 0; /* no S3-specific functionality */
+
+	svga.set_video_mode = 0; /* implemented in core */
+	svga.determine_mode = 0; /* implemented in core */
+	svga.set_clock = 0; /* implemented in core */
+	svga.get_clock = &SVGA_S3_GetClock;
+	svga.hardware_cursor_active = &SVGA_S3_HWCursorActive;
+	svga.accepts_mode = &SVGA_S3_AcceptsMode;
+
+	if (vga.vmemsize == 0)
+		vga.vmemsize = 2*1024*1024; // the most common S3 configuration
+
+	// Set CRTC 36 to specify amount of VRAM and PCI
+	if (vga.vmemsize < 1024*1024) {
+		vga.vmemsize = 512*1024;
+		vga.s3.reg_36 = 0xfa;		// less than 1mb fast page mode
+	} else if (vga.vmemsize < 2048*1024)	{
+		vga.vmemsize = 1024*1024;
+		vga.s3.reg_36 = 0xda;		// 1mb fast page mode
+	} else if (vga.vmemsize < 3072*1024)	{
+		vga.vmemsize = 2048*1024;
+		vga.s3.reg_36 = 0x9a;		// 2mb fast page mode
+	} else if (vga.vmemsize < 4096*1024)	{
+		vga.vmemsize = 3072*1024;
+		vga.s3.reg_36 = 0x5a;		// 3mb fast page mode
+	} else {	// Trio64 supported only up to 4M
+		vga.vmemsize = 4096*1024;
+		vga.s3.reg_36 = 0x1a;		// 4mb fast page mode
+	}
+
+	// S3 ROM signature
+	PhysPt rom_base=PhysMake(0xc000,0);
+	phys_writeb(rom_base+0x003f,'S');
+	phys_writeb(rom_base+0x0040,'3');
+	phys_writeb(rom_base+0x0041,' ');
+	phys_writeb(rom_base+0x0042,'8');
+	phys_writeb(rom_base+0x0043,'6');
+	phys_writeb(rom_base+0x0044,'C');
+	phys_writeb(rom_base+0x0045,'7');
+	phys_writeb(rom_base+0x0046,'6');
+	phys_writeb(rom_base+0x0047,'4');
+}

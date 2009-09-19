@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: support.cpp,v 1.32 2007-06-12 20:22:09 c2woody Exp $ */
+/* $Id: support.cpp,v 1.37 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -25,10 +25,26 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <algorithm>
+#include <cctype>
+#include <string>
+  
 #include "dosbox.h"
 #include "debug.h"
 #include "support.h"
 #include "video.h"
+
+
+void upcase(std::string &str) {
+	int (*tf)(int) = std::toupper;
+	std::transform(str.begin(), str.end(), str.begin(), tf);
+}
+
+void lowcase(std::string &str) {
+	int (*tf)(int) = std::tolower;
+	std::transform(str.begin(), str.end(), str.begin(), tf);
+}
+  
 
 /* 
 	Ripped some source from freedos for this one.
@@ -55,7 +71,7 @@ char *ltrim(char *str) {
 char *rtrim(char *str) {
 	char *p;
 	p = strchr(str, '\0');
-	while (--p >= str && isspace(*reinterpret_cast<unsigned char*>(p)));
+	while (--p >= str && isspace(*reinterpret_cast<unsigned char*>(p))) {};
 	p[1] = '\0';
 	return str;
 }
@@ -63,6 +79,17 @@ char *rtrim(char *str) {
 char *trim(char *str) {
 	return ltrim(rtrim(str));
 }
+
+char * upcase(char * str) {
+    for (char* idx = str; *idx ; idx++) *idx = toupper(*reinterpret_cast<unsigned char*>(idx));
+    return str;
+}
+
+char * lowcase(char * str) {
+	for(char* idx = str; *idx ; idx++)  *idx = tolower(*reinterpret_cast<unsigned char*>(idx));
+	return str;
+}
+
 
 
 bool ScanCMDBool(char * cmd,char const * const check) {
@@ -102,7 +129,7 @@ char * StripWord(char *&line) {
 		}
 	}
 	char * begin=scan;
-	for (;char c=*scan;scan++) {
+	for (char c = *scan ;(c = *scan);scan++) {
 		if (isspace(*reinterpret_cast<unsigned char*>(&c))) {
 			*scan++=0;
 			break;

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,13 +16,14 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: midi_alsa.h,v 1.17 2007-08-08 08:04:53 qbix79 Exp $ */
+/* $Id: midi_alsa.h,v 1.20 2009-04-27 17:33:12 qbix79 Exp $ */
 
 #define ALSA_PCM_OLD_HW_PARAMS_API
 #define ALSA_PCM_OLD_SW_PARAMS_API
 #include <alsa/asoundlib.h>
 #include <ctype.h>
-
+#include <string>
+#include <sstream>
 #define ADDR_DELIM	".:"
 
 #if ((SND_LIB_MINOR >= 6) && (SND_LIB_MAJOR == 0)) || (SND_LIB_MAJOR >= 1)
@@ -50,22 +51,24 @@ private:
 			snd_seq_flush_output(seq_handle);
 	}
 
-	int parse_addr(const char *arg, int *client, int *port) {
-		char *p;
+	bool parse_addr(const char *arg, int *client, int *port) {
+		std::string in(arg);
+		if(in.empty()) return false;
 
-		if (isdigit(*arg)) {
-			if ((p = strpbrk(arg, ADDR_DELIM)) == NULL)
-				return -1;
-			*client = atoi(arg);
-			*port = atoi(p + 1);
-		} else {
-			if (*arg == 's' || *arg == 'S') {
-				*client = SND_SEQ_ADDRESS_SUBSCRIBERS;
-				*port = 0;
-			} else
-				return -1;
+		if(in[0] == 's' || in[0] == 'S') {
+			*client = SND_SEQ_ADDRESS_SUBSCRIBERS;
+			*port = 0;
+			return true;
 		}
-		return 0;
+
+		if(in.find_first_of(ADDR_DELIM) == std::string::npos) return false;
+		std::istringstream inp(in);
+		int val1, val2; char c;
+		if(!(inp >> val1)) return false;
+		if(!(inp >> c   )) return false;
+		if(!(inp >> val2)) return false;
+		*client = val1; *port = val2;
+		return true;
 	}
 public:
 	MidiHandler_alsa() : MidiHandler() {};
@@ -125,19 +128,19 @@ public:
 	bool Open(const char * conf) {
 		char var[10];
 		unsigned int caps;
-		bool defaultport = true; //try 17:0 as well. Seems to be default nowadays
+		bool defaultport = true; //try 17:0. Seems to be default nowadays
 
 		// try to use port specified in config file
 		if (conf && conf[0]) { 
 			safe_strncpy(var, conf, 10);
-			if (parse_addr(var, &seq_client, &seq_port) < 0) {
+			if (!parse_addr(var, &seq_client, &seq_port)) {
 				LOG_MSG("ALSA:Invalid alsa port %s", var);
 				return false;
 			}
 			defaultport = false;
 		}
 		// default port if none specified
-		else if (parse_addr("65:0", &seq_client, &seq_port) < 0) {
+		else if (!parse_addr("65:0", &seq_client, &seq_port)) {
 				LOG_MSG("ALSA:Invalid alsa port 65:0");
 				return false;
 		}
@@ -168,10 +171,13 @@ public:
 			if (snd_seq_connect_to(seq_handle, my_port, seq_client, seq_port) < 0) {
 				if (defaultport) { //if port "65:0" (default) try "17:0" as well
 					seq_client = 17; seq_port = 0; //Update reported values
-					if(snd_seq_connect_to(seq_handle,my_port,seq_client,seq_port) < 0) {
-						snd_seq_close(seq_handle);
-						LOG_MSG("ALSA:Can't subscribe to MIDI port (65:0) nor (17:0)");
-						return false;
+					if(snd_seq_connect_to(seq_handle,my_port,seq_client,seq_port) < 0) { //Try 128:0 Timidity port as well
+//						seq_client = 128; seq_port = 0; //Update reported values
+//						if(snd_seq_connect_to(seq_handle,my_port,seq_client,seq_port) < 0) {
+							snd_seq_close(seq_handle);
+							LOG_MSG("ALSA:Can't subscribe to MIDI port (65:0) nor (17:0)");
+							return false;
+//						}
 					}
 				} else {
 					snd_seq_close(seq_handle);

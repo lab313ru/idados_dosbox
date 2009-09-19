@@ -3,19 +3,19 @@
 enum LOG_TYPES {
 	LOG_ALL,
 	LOG_VGA, LOG_VGAGFX,LOG_VGAMISC,LOG_INT10,
-	LOG_SB,LOG_DMA,
+	LOG_SB,LOG_DMACONTROL,
 	LOG_FPU,LOG_CPU,LOG_PAGING,
 	LOG_FCB,LOG_FILES,LOG_IOCTL,LOG_EXEC,LOG_DOSMISC,
 	LOG_PIT,LOG_KEYBOARD,LOG_PIC,
 	LOG_MOUSE,LOG_BIOS,LOG_GUI,LOG_MISC,
 	LOG_IO,
-	LOG_MAX,
+	LOG_MAX
 };
 
 enum LOG_SEVERITIES {
 	LOG_NORMAL,
 	LOG_WARN,
-	LOG_ERROR,
+	LOG_ERROR
 };
 
 #if C_DEBUG
@@ -53,7 +53,7 @@ struct LOG
 	void operator()(char const* , char const* , double ,double )				{ }
 	void operator()(char const* , double , char const* )						{ }
 	void operator()(char const* , double , double, char const* )						{ }
-
+	void operator()(char const* , char const*, char const*)				{ }
 
 
 }; //add missing operators to here

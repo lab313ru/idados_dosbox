@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sblaster.cpp,v 1.66 2007-08-08 08:03:48 qbix79 Exp $ */
+/* $Id: sblaster.cpp,v 1.73 2009-04-25 07:02:28 qbix79 Exp $ */
 
 #include <iomanip>
 #include <sstream>
@@ -78,11 +78,11 @@ enum DSP_MODES {
 enum DMA_MODES {
 	DSP_DMA_NONE,
 	DSP_DMA_2,DSP_DMA_3,DSP_DMA_4,DSP_DMA_8,
-	DSP_DMA_16,DSP_DMA_16_ALIASED,
+	DSP_DMA_16,DSP_DMA_16_ALIASED
 };
 
 enum {
-	PLAY_MONO,PLAY_STEREO,
+	PLAY_MONO,PLAY_STEREO
 };
 
 struct SB_INFO {
@@ -160,10 +160,35 @@ static SB_INFO sb;
 
 static char const * const copyright_string="COPYRIGHT (C) CREATIVE TECHNOLOGY LTD, 1992.";
 
-static Bit8u DSP_cmd_len[256] = {
-//  0,0,0,0, 1,2,0,0, 0,0,0,0, 0,0,2,1,  // 0x00 for SB16. but breaks sbpro
-  0,0,0,0, 0,2,0,0, 0,0,0,0, 0,0,2,1,  // 0x00
-  1,0,0,0, 2,0,2,2, 0,0,0,0, 0,0,0,0,  // 0x10
+// number of bytes in input for commands (sb/sbpro)
+static Bit8u DSP_cmd_len_sb[256] = {
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0x00
+//  1,0,0,0, 2,0,2,2, 0,0,0,0, 0,0,0,0,  // 0x10
+  1,0,0,0, 2,2,2,2, 0,0,0,0, 0,0,0,0,  // 0x10 Wari hack
+  0,0,0,0, 2,0,0,0, 0,0,0,0, 0,0,0,0,  // 0x20
+  0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0,  // 0x30
+
+  1,2,2,0, 0,0,0,0, 2,0,0,0, 0,0,0,0,  // 0x40
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0x50
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0x60
+  0,0,0,0, 2,2,2,2, 0,0,0,0, 0,0,0,0,  // 0x70
+
+  2,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0x80
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0x90
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0xa0
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0xb0
+
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0xc0
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0xd0
+  1,0,1,0, 1,0,0,0, 0,0,0,0, 0,0,0,0,  // 0xe0
+  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0   // 0xf0
+};
+
+// number of bytes in input for commands (sb16)
+static Bit8u DSP_cmd_len_sb16[256] = {
+  0,0,0,0, 1,2,0,0, 1,0,0,0, 0,0,2,1,  // 0x00
+//  1,0,0,0, 2,0,2,2, 0,0,0,0, 0,0,0,0,  // 0x10
+  1,0,0,0, 2,2,2,2, 0,0,0,0, 0,0,0,0,  // 0x10 Wari hack
   0,0,0,0, 2,0,0,0, 0,0,0,0, 0,0,0,0,  // 0x20
   0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0,  // 0x30
 
@@ -180,8 +205,11 @@ static Bit8u DSP_cmd_len[256] = {
   3,3,3,3, 3,3,3,3, 3,3,3,3, 3,3,3,3,  // 0xc0
   0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,  // 0xd0
   1,0,1,0, 1,0,0,0, 0,0,0,0, 0,0,0,0,  // 0xe0
-  0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0   // 0xf0
+  0,0,0,0, 0,0,0,0, 0,1,0,0, 0,0,0,0   // 0xf0
 };
+
+static Bit8u ASP_regs[256];
+static bool ASP_init_in_progress = false;
 
 static int E2_incr_table[4][9] = {
   {  0x01, -0x02, -0x04,  0x08, -0x10,  0x20,  0x40, -0x80, -106 },
@@ -225,6 +253,8 @@ static INLINE void SB_RaiseIRQ(SB_IRQS type) {
 		break;
 	case SB_IRQ_16:
 		sb.irq.pending_16bit=true;
+		break;
+	default:
 		break;
 	}
 }
@@ -431,8 +461,13 @@ static void GenerateDMASound(Bitu size) {
 			read=sb.dma.chan->Read(size,(Bit8u *)&sb.dma.buf.b16[sb.dma.remain_size]) 
 				>> (sb.dma.mode==DSP_DMA_16_ALIASED ? 1:0);
 			Bitu total=read+sb.dma.remain_size;
+#if defined(WORDS_BIGENDIAN)
+			if (sb.dma.sign) sb.chan->AddSamples_s16_nonnative(total>>1,sb.dma.buf.b16);
+			else sb.chan->AddSamples_s16u_nonnative(total>>1,(Bit16u *)sb.dma.buf.b16);
+#else
 			if (sb.dma.sign) sb.chan->AddSamples_s16(total>>1,sb.dma.buf.b16);
 			else sb.chan->AddSamples_s16u(total>>1,(Bit16u *)sb.dma.buf.b16);
+#endif
 			if (total&1) {
 				sb.dma.remain_size=1;
 				sb.dma.buf.b16[0]=sb.dma.buf.b16[total-1];
@@ -440,8 +475,13 @@ static void GenerateDMASound(Bitu size) {
 		} else {
 			read=sb.dma.chan->Read(size,(Bit8u *)sb.dma.buf.b16) 
 				>> (sb.dma.mode==DSP_DMA_16_ALIASED ? 1:0);
+#if defined(WORDS_BIGENDIAN)
+			if (sb.dma.sign) sb.chan->AddSamples_m16_nonnative(read,sb.dma.buf.b16);
+			else sb.chan->AddSamples_m16u_nonnative(read,(Bit16u *)sb.dma.buf.b16);
+#else
 			if (sb.dma.sign) sb.chan->AddSamples_m16(read,sb.dma.buf.b16);
 			else sb.chan->AddSamples_m16u(read,(Bit16u *)sb.dma.buf.b16);
+#endif
 		}
 		//restore buffer length value to byte size in aliased mode
 		if (sb.dma.mode==DSP_DMA_16_ALIASED) read=read<<1;
@@ -470,6 +510,7 @@ static void GenerateDMASound(Bitu size) {
 	}
 }
 
+/* old version...
 static void GenerateDACSound(Bitu len) {
 	if (!sb.dac.used) {
 		sb.mode=MODE_NONE;
@@ -485,6 +526,7 @@ static void GenerateDACSound(Bitu len) {
 	sb.dac.used=0;
 	sb.chan->AddSamples_m16(len,(Bit16s *)MixTemp);
 }
+*/
 
 static void DMA_Silent_Event(Bitu val) {
 	if (sb.dma.left<val) val=sb.dma.left;
@@ -650,6 +692,7 @@ static void DSP_Reset(void) {
 	sb.dma.autoinit=false;
 	sb.dma.mode=DSP_DMA_NONE;
 	sb.dma.remain_size=0;
+	if (sb.dma.chan) sb.dma.chan->Clear_Request();
 	sb.freq=22050;
 	sb.time_constant=45;
 	sb.dac.used=0;
@@ -704,9 +747,56 @@ Bitu DEBUG_EnableDebugger(void);
 static void DSP_DoCommand(void) {
 //	LOG_MSG("DSP Command %X",sb.dsp.cmd);
 	switch (sb.dsp.cmd) {
-	case 0x04:	/* DSP Status SB 2.0/pro version. NOT SB16. */
-		DSP_FlushData();
-		DSP_AddData(0xff);			//Everthing enabled
+	case 0x04:
+		if (sb.type == SBT_16) {
+			/* SB16 ASP set mode register */
+			if ((sb.dsp.in.data[0]&0xf1)==0xf1) ASP_init_in_progress=true;
+			else ASP_init_in_progress=false;
+			LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X (set mode register to %X)",sb.dsp.cmd,sb.dsp.in.data[0]);
+		} else {
+			/* DSP Status SB 2.0/pro version. NOT SB16. */
+			DSP_FlushData();
+			if (sb.type == SBT_2) DSP_AddData(0x88);
+			else if ((sb.type == SBT_PRO1) || (sb.type == SBT_PRO2)) DSP_AddData(0x7b);
+			else DSP_AddData(0xff);			//Everything enabled
+		}
+		break;
+	case 0x05:	/* SB16 ASP set codec parameter */
+		LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X (set codec parameter)",sb.dsp.cmd);
+		break;
+	case 0x08:	/* SB16 ASP get version */
+		LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X sub %X",sb.dsp.cmd,sb.dsp.in.data[0]);
+		if (sb.type == SBT_16) {
+			switch (sb.dsp.in.data[0]) {
+				case 0x03:
+					DSP_AddData(0x18);	// version ID (??)
+					break;
+				default:
+					LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X sub %X",sb.dsp.cmd,sb.dsp.in.data[0]);
+					break;
+			}
+		} else {
+			LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X sub %X",sb.dsp.cmd,sb.dsp.in.data[0]);
+		}
+		break;
+	case 0x0e:	/* SB16 ASP set register */
+		if (sb.type == SBT_16) {
+//			LOG(LOG_SB,LOG_NORMAL)("SB16 ASP set register %X := %X",sb.dsp.in.data[0],sb.dsp.in.data[1]);
+			ASP_regs[sb.dsp.in.data[0]] = sb.dsp.in.data[1];
+		} else {
+			LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X (set register)",sb.dsp.cmd);
+		}
+		break;
+	case 0x0f:	/* SB16 ASP get register */
+		if (sb.type == SBT_16) {
+			if ((ASP_init_in_progress) && (sb.dsp.in.data[0]==0x83)) {
+				ASP_regs[0x83] = ~ASP_regs[0x83];
+			}
+//			LOG(LOG_SB,LOG_NORMAL)("SB16 ASP get register %X == %X",sb.dsp.in.data[0],ASP_regs[sb.dsp.in.data[0]]);
+			DSP_AddData(ASP_regs[sb.dsp.in.data[0]]);
+		} else {
+			LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X (get register)",sb.dsp.cmd);
+		}
 		break;
 	case 0x10:	/* Direct DAC */
 		DSP_ChangeMode(MODE_DAC);
@@ -722,6 +812,7 @@ static void DSP_DoCommand(void) {
 		GetDMAChannel(sb.hw.dma8)->Register_Callback(DSP_ADC_CallBack);
 		break;
 	case 0x14:	/* Singe Cycle 8-Bit DMA DAC */
+	case 0x15:	/* Wari hack. Waru uses this one instead of 0x14, but some weird stuff going on there anyway */
 	case 0x91:	/* Singe Cycle 8-Bit DMA High speed DAC */
 		/* Note: 0x91 is documented only for DSP ver.2.x and 3.x, not 4.x */
 		DSP_PrepareDMA_Old(DSP_DMA_8,false,false);
@@ -836,6 +927,8 @@ static void DSP_DoCommand(void) {
 			DSP_AddData(0x3);DSP_AddData(0x2);break;
 		case SBT_16:
 			DSP_AddData(0x4);DSP_AddData(0x5);break;
+		default:
+			break;
 		}
 		break;
 	case 0xe2:	/* Weird DMA identification write routine */
@@ -887,11 +980,45 @@ static void DSP_DoCommand(void) {
 	case 0xa0: case 0xa8: /* Documented only for DSP 3.x */
 		LOG(LOG_SB,LOG_ERROR)("DSP:Unimplemented input command %2X",sb.dsp.cmd);
 		break;
-	case 0x0f:	/* SB16 ASP get register */
-		DSP_AddData(0xff); //Fall through
-	case 0x0e:	/* SB16 ASP Command ? */
-	case 0x05:	/* SB16 ASP set register */
-		LOG(LOG_SB,LOG_NORMAL)("DSP Unhandled SB16ASP command %X",sb.dsp.cmd);
+	case 0xf9:	/* SB16 ASP ??? */
+		if (sb.type == SBT_16) {
+			LOG(LOG_SB,LOG_NORMAL)("SB16 ASP unknown function %x",sb.dsp.in.data[0]);
+			// just feed it what it expects
+			switch (sb.dsp.in.data[0]) {
+			case 0x0b:
+				DSP_AddData(0x00);
+				break;
+			case 0x0e:
+				DSP_AddData(0xff);
+				break;
+			case 0x0f:
+				DSP_AddData(0x07);
+				break;
+			case 0x23:
+				DSP_AddData(0x00);
+				break;
+			case 0x24:
+				DSP_AddData(0x00);
+				break;
+			case 0x2b:
+				DSP_AddData(0x00);
+				break;
+			case 0x2c:
+				DSP_AddData(0x00);
+				break;
+			case 0x2d:
+				DSP_AddData(0x00);
+				break;
+			case 0x37:
+				DSP_AddData(0x38);
+				break;
+			default:
+				DSP_AddData(0x00);
+				break;
+			}
+		} else {
+			LOG(LOG_SB,LOG_NORMAL)("SB16 ASP unknown function %X",sb.dsp.cmd);
+		}
 		break;
 	default:
 		LOG(LOG_SB,LOG_ERROR)("DSP:Unhandled (undocumented) command %2X",sb.dsp.cmd);
@@ -906,7 +1033,8 @@ static void DSP_DoWrite(Bit8u val) {
 	switch (sb.dsp.cmd) {
 	case DSP_NO_COMMAND:
 		sb.dsp.cmd=val;
-		sb.dsp.cmd_len=DSP_cmd_len[val];
+		if (sb.type == SBT_16) sb.dsp.cmd_len=DSP_cmd_len_sb16[val];
+		else sb.dsp.cmd_len=DSP_cmd_len_sb[val];
 		sb.dsp.in.pos=0;
 		if (!sb.dsp.cmd_len) DSP_DoCommand();
 		break;
@@ -1314,7 +1442,7 @@ private:
 		else type=SBT_16;
 
 		if (type==SBT_16) {
-			if ((machine!=MCH_VGA) || !SecondDMAControllerAvailable()) type=SBT_PRO2;
+			if ((!IS_EGAVGA_ARCH) || !SecondDMAControllerAvailable()) type=SBT_PRO2;
 		}
 			
 		/* OPL/CMS Init */
@@ -1345,8 +1473,7 @@ public:
 		sb.hw.irq=section->Get_int("irq");
 		sb.hw.dma8=section->Get_int("dma");
 		sb.hw.dma16=section->Get_int("hdma");
-		sb.mixer.enabled=section->Get_bool("mixer");
-		Bitu oplrate=section->Get_int("oplrate");
+		sb.mixer.enabled=section->Get_bool("sbmixer");
 		sb.mixer.stereo=false;
 		OPL_Mode opl_mode = OPL_none;
 		Find_Type_And_Opl(section,sb.type,opl_mode);
@@ -1369,6 +1496,7 @@ public:
 		if (sb.type==SBT_NONE) return;
 		sb.chan=MixerChan.Install(&SBLASTER_CallBack,22050,"SB");
 		sb.dsp.state=DSP_S_NORMAL;
+		sb.dma.chan=NULL;
 
 		for (i=4;i<=0xf;i++) {
 			if (i==8 || i==9) continue;
@@ -1377,6 +1505,9 @@ public:
 			ReadHandler[i].Install(sb.hw.base+i,read_sb,IO_MB);
 			WriteHandler[i].Install(sb.hw.base+i,write_sb,IO_MB);
 		}
+		for (i=0;i<256;i++) ASP_regs[i] = 0;
+		ASP_regs[5] = 0x01;
+		ASP_regs[9] = 0xf8;
 		DSP_Reset();
 		CTMIXER_Reset();
 		// The documentation does not specify if SB gets initialized with the speaker enabled

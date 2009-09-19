@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -117,7 +117,7 @@ public:
 		bool is_current_block=false;	// if the current block is modified, it has to be exited as soon as possible
 
 		Bit32u ip_point=SegPhys(cs)+reg_eip;
-		ip_point=((paging.tlb.phys_page[ip_point>>12]-phys_page)<<12)+(ip_point&0xfff);
+		ip_point=(PAGING_GetPhysicalPage(ip_point)-(phys_page<<12))+(ip_point&0xfff);
 		while (index>=0) {
 			Bitu map=0;
 			// see if there is still some code in the range
@@ -145,7 +145,7 @@ public:
 		if (host_readb(hostmem+addr)==(Bit8u)val) return;
 		host_writeb(hostmem+addr,val);
 		// see if there's code where we are writing to
-		if (!*(Bit8u*)&write_map[addr]) {
+		if (!host_readb(&write_map[addr])) {
 			if (active_blocks) return;		// still some blocks in this page
 			active_count--;
 			if (!active_count) Release();	// delay page releasing until active_count is zero
@@ -162,7 +162,7 @@ public:
 		if (host_readw(hostmem+addr)==(Bit16u)val) return;
 		host_writew(hostmem+addr,val);
 		// see if there's code where we are writing to
-		if (!*(Bit16u*)&write_map[addr]) {
+		if (!host_readw(&write_map[addr])) {
 			if (active_blocks) return;		// still some blocks in this page
 			active_count--;
 			if (!active_count) Release();	// delay page releasing until active_count is zero
@@ -171,7 +171,12 @@ public:
 			invalidation_map=(Bit8u*)malloc(4096);
 			memset(invalidation_map,0,4096);
 		}
+#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
+		host_writew(&invalidation_map[addr],
+			host_readw(&invalidation_map[addr])+0x101);
+#else
 		(*(Bit16u*)&invalidation_map[addr])+=0x101;
+#endif
 		InvalidateRange(addr,addr+1);
 	}
 	void writed(PhysPt addr,Bitu val){
@@ -179,7 +184,7 @@ public:
 		if (host_readd(hostmem+addr)==(Bit32u)val) return;
 		host_writed(hostmem+addr,val);
 		// see if there's code where we are writing to
-		if (!*(Bit32u*)&write_map[addr]) {
+		if (!host_readd(&write_map[addr])) {
 			if (active_blocks) return;		// still some blocks in this page
 			active_count--;
 			if (!active_count) Release();	// delay page releasing until active_count is zero
@@ -188,14 +193,19 @@ public:
 			invalidation_map=(Bit8u*)malloc(4096);
 			memset(invalidation_map,0,4096);
 		}
+#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
+		host_writed(&invalidation_map[addr],
+			host_readd(&invalidation_map[addr])+0x1010101);
+#else
 		(*(Bit32u*)&invalidation_map[addr])+=0x1010101;
+#endif
 		InvalidateRange(addr,addr+3);
 	}
 	bool writeb_checked(PhysPt addr,Bitu val) {
 		addr&=4095;
 		if (host_readb(hostmem+addr)==(Bit8u)val) return false;
 		// see if there's code where we are writing to
-		if (!*(Bit8u*)&write_map[addr]) {
+		if (!host_readb(&write_map[addr])) {
 			if (!active_blocks) {
 				// no blocks left in this page, still delay the page releasing a bit
 				active_count--;
@@ -219,7 +229,7 @@ public:
 		addr&=4095;
 		if (host_readw(hostmem+addr)==(Bit16u)val) return false;
 		// see if there's code where we are writing to
-		if (!*(Bit16u*)&write_map[addr]) {
+		if (!host_readw(&write_map[addr])) {
 			if (!active_blocks) {
 				// no blocks left in this page, still delay the page releasing a bit
 				active_count--;
@@ -230,7 +240,12 @@ public:
 				invalidation_map=(Bit8u*)malloc(4096);
 				memset(invalidation_map,0,4096);
 			}
+#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
+			host_writew(&invalidation_map[addr],
+				host_readw(&invalidation_map[addr])+0x101);
+#else
 			(*(Bit16u*)&invalidation_map[addr])+=0x101;
+#endif
 			if (InvalidateRange(addr,addr+1)) {
 				cpu.exception.which=SMC_CURRENT_BLOCK;
 				return true;
@@ -243,7 +258,7 @@ public:
 		addr&=4095;
 		if (host_readd(hostmem+addr)==(Bit32u)val) return false;
 		// see if there's code where we are writing to
-		if (!*(Bit32u*)&write_map[addr]) {
+		if (!host_readd(&write_map[addr])) {
 			if (!active_blocks) {
 				// no blocks left in this page, still delay the page releasing a bit
 				active_count--;
@@ -254,7 +269,12 @@ public:
 				invalidation_map=(Bit8u*)malloc(4096);
 				memset(invalidation_map,0,4096);
 			}
+#if defined(WORDS_BIGENDIAN) || !defined(C_UNALIGNED_MEMORY)
+			host_writed(&invalidation_map[addr],
+				host_readd(&invalidation_map[addr])+0x1010101);
+#else
 			(*(Bit32u*)&invalidation_map[addr])+=0x1010101;
+#endif
 			if (InvalidateRange(addr,addr+3)) {
 				cpu.exception.which=SMC_CURRENT_BLOCK;
 				return true;

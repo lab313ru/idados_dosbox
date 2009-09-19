@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 	Based of sn76496.c of the M.A.M.E. project
 */
 
-#include <math.h>
 #include "dosbox.h"
 #include "inout.h"
 #include "mixer.h"
@@ -28,6 +27,8 @@
 #include "setup.h"
 #include "pic.h"
 #include "dma.h"
+#include <cstring>
+#include <math.h>
 
 #define DAC_CLOCK 3570000
 #define MAX_OUTPUT 0x7fff

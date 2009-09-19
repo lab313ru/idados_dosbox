@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: core_dyn_x86.cpp,v 1.35 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 
@@ -346,8 +348,7 @@ run_block:
 	case BR_Link2:
 		{
 			Bitu temp_ip=SegPhys(cs)+reg_eip;
-			Bitu temp_page=temp_ip >> 12;
-			CodePageHandler * temp_handler=(CodePageHandler *)paging.tlb.handler[temp_page];
+			CodePageHandler * temp_handler=(CodePageHandler *)get_tlb_readhandler(temp_ip);
 			if (temp_handler->flags & PFLAG_HASCODE) {
 				block=temp_handler->FindCacheBlock(temp_ip & 4095);
 				if (!block) goto restart_core;

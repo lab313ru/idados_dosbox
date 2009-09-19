@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: cpu.cpp,v 1.103 2007-08-09 19:52:32 c2woody Exp $ */
+/* $Id: cpu.cpp,v 1.116 2009-03-16 18:10:08 c2woody Exp $ */
 
 #include <assert.h>
 #include <sstream>
@@ -26,6 +26,7 @@
 #include "debug.h"
 #include "mapper.h"
 #include "setup.h"
+#include "programs.h"
 #include "paging.h"
 #include "lazyflags.h"
 #include "support.h"
@@ -57,8 +58,15 @@ Bit32s CPU_CycleUp = 0;
 Bit32s CPU_CycleDown = 0;
 Bit64s CPU_IODelayRemoved = 0;
 CPU_Decoder * cpudecoder;
-bool CPU_CycleAutoAdjust;
-Bitu CPU_AutoDetermineMode;
+bool CPU_CycleAutoAdjust = false;
+bool CPU_SkipCycleAutoAdjust = false;
+Bitu CPU_AutoDetermineMode = 0;
+
+Bitu CPU_ArchitectureType = CPU_ARCHTYPE_MIXED;
+
+Bitu CPU_flag_id_toggle=0;
+
+Bitu CPU_PrefetchQueueSize=0;
 
 void CPU_Core_Full_Init(void);
 void CPU_Core_Normal_Init(void);
@@ -110,6 +118,22 @@ void CPU_Core_Dynrec_Cache_Close(void);
 #endif
 
 
+void Descriptor::Load(PhysPt address) {
+	cpu.mpl=0;
+	Bit32u* data = (Bit32u*)&saved;
+	*data	  = mem_readd(address);
+	*(data+1) = mem_readd(address+4);
+	cpu.mpl=3;
+}
+void Descriptor:: Save(PhysPt address) {
+	cpu.mpl=0;
+	Bit32u* data = (Bit32u*)&saved;
+	mem_writed(address,*data);
+	mem_writed(address+4,*(data+1));
+	cpu.mpl=03;
+}
+
+
 void CPU_Push16(Bitu value) {
 	Bit32u new_esp=(reg_esp&cpu.stack.notmask)|((reg_esp-2)&cpu.stack.mask);
 	mem_writew(SegPhys(ss) + (new_esp & cpu.stack.mask) ,value);
@@ -144,8 +168,10 @@ PhysPt SelBase(Bitu sel) {
 	}
 }
 
+
 void CPU_SetFlags(Bitu word,Bitu mask) {
-	reg_flags=(reg_flags & ~mask)|(word & mask)|2|FLAG_ID;
+	mask|=CPU_flag_id_toggle;	// ID-flag can be toggled on cpuid-supporting CPUs
+	reg_flags=(reg_flags & ~mask)|(word & mask)|2;
 	cpu.direction=1-((reg_flags & FLAG_DF) >> 9);
 }
 
@@ -201,6 +227,50 @@ bool CPU_PUSHF(Bitu use32) {
 	return false;
 }
 
+void CPU_CheckSegments(void) {
+	bool needs_invalidation=false;
+	Descriptor desc;
+	if (!cpu.gdt.GetDescriptor(SegValue(es),desc)) needs_invalidation=true;
+	else switch (desc.Type()) {
+		case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
+		case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
+		case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
+			if (cpu.cpl>desc.DPL()) needs_invalidation=true; break;
+		default: break;	}
+	if (needs_invalidation) CPU_SetSegGeneral(es,0);
+
+	needs_invalidation=false;
+	if (!cpu.gdt.GetDescriptor(SegValue(ds),desc)) needs_invalidation=true;
+	else switch (desc.Type()) {
+		case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
+		case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
+		case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
+			if (cpu.cpl>desc.DPL()) needs_invalidation=true; break;
+		default: break;	}
+	if (needs_invalidation) CPU_SetSegGeneral(ds,0);
+
+	needs_invalidation=false;
+	if (!cpu.gdt.GetDescriptor(SegValue(fs),desc)) needs_invalidation=true;
+	else switch (desc.Type()) {
+		case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
+		case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
+		case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
+			if (cpu.cpl>desc.DPL()) needs_invalidation=true; break;
+		default: break;	}
+	if (needs_invalidation) CPU_SetSegGeneral(fs,0);
+
+	needs_invalidation=false;
+	if (!cpu.gdt.GetDescriptor(SegValue(gs),desc)) needs_invalidation=true;
+	else switch (desc.Type()) {
+		case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
+		case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
+		case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
+			if (cpu.cpl>desc.DPL()) needs_invalidation=true; break;
+		default: break;	}
+	if (needs_invalidation) CPU_SetSegGeneral(gs,0);
+}
+
+
 class TaskStateSegment {
 public:
 	TaskStateSegment() {
@@ -210,12 +280,16 @@ public:
 		return valid;
 	}
 	Bitu Get_back(void) {
-		return mem_readw(base);
+		cpu.mpl=0;
+		Bit16u backlink=mem_readw(base);
+		cpu.mpl=3;
+		return backlink;
 	}
 	void SaveSelector(void) {
 		cpu.gdt.SetDescriptor(selector,desc);
 	}
 	void Get_SSx_ESPx(Bitu level,Bitu & _ss,Bitu & _esp) {
+		cpu.mpl=0;
 		if (is386) {
 			PhysPt where=base+offsetof(TSS_32,esp0)+level*8;
 			_esp=mem_readd(where);
@@ -225,6 +299,7 @@ public:
 			_esp=mem_readw(where);
 			_ss=mem_readw(where+2);
 		}
+		cpu.mpl=3;
 	}
 	bool SetSelector(Bitu new_sel) {
 		valid=false;
@@ -305,6 +380,14 @@ bool CPU_SwitchTask(Bitu new_tss_selector,TSwitchType tstype,Bitu old_eip) {
 		new_ldt=mem_readw(new_tss.base+offsetof(TSS_32,ldt));
 	} else {
 		E_Exit("286 task switch");
+		new_cr3=0;
+		new_eip=0;
+		new_eflags=0;
+		new_eax=0;	new_ecx=0;	new_edx=0;	new_ebx=0;
+		new_esp=0;	new_ebp=0;	new_edi=0;	new_esi=0;
+
+		new_es=0;	new_cs=0;	new_ss=0;	new_ds=0;	new_fs=0;	new_gs=0;
+		new_ldt=0;
 	}
 
 	/* Check if we need to clear busy bit of old TASK */
@@ -424,7 +507,9 @@ doconforming:
 	CPU_SetSegGeneral(ds,new_ds);
 	CPU_SetSegGeneral(fs,new_fs);
 	CPU_SetSegGeneral(gs,new_gs);
-	if (!cpu_tss.SetSelector(new_tss_selector)) LOG(LOG_CPU,LOG_NORMAL)("TaskSwitch: set tss selector %X failed",new_tss_selector);
+	if (!cpu_tss.SetSelector(new_tss_selector)) {
+		LOG(LOG_CPU,LOG_NORMAL)("TaskSwitch: set tss selector %X failed",new_tss_selector);
+	}
 //	cpu_tss.desc.SetBusy(true);
 //	cpu_tss.SaveSelector();
 //	LOG_MSG("Task CPL %X CS:%X IP:%X SS:%X SP:%X eflags %x",cpu.cpl,SegValue(cs),reg_eip,SegValue(ss),reg_esp,reg_flags);
@@ -433,6 +518,7 @@ doconforming:
 
 bool CPU_IO_Exception(Bitu port,Bitu size) {
 	if (cpu.pmode && ((GETFLAG_IOPL<cpu.cpl) || GETFLAG(VM))) {
+		cpu.mpl=0;
 		if (!cpu_tss.is386) goto doexception;
 		PhysPt bwhere=cpu_tss.base+0x66;
 		Bitu ofs=mem_readw(bwhere);
@@ -441,9 +527,11 @@ bool CPU_IO_Exception(Bitu port,Bitu size) {
 		Bitu map=mem_readw(bwhere);
 		Bitu mask=(0xffff>>(16-size)) << (port&7);
 		if (map & mask) goto doexception;
+		cpu.mpl=3;
 	}
 	return false;
 doexception:
+	cpu.mpl=3;
 	LOG(LOG_CPU,LOG_NORMAL)("IO Exception port %X",port);
 	return CPU_PrepareException(EXCEPTION_GP,0);
 }
@@ -497,8 +585,8 @@ void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip) {
 				return;
 			}
 		} 
-		Descriptor gate;
 
+		Descriptor gate;
 		if (!cpu.idt.GetDescriptor(num<<3,gate)) {
 			// zone66
 			CPU_Exception(EXCEPTION_GP,num*8+2+(type&CPU_INT_SOFTWARE)?0:1);
@@ -511,14 +599,15 @@ void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip) {
 			return;
 		}
 
-		CPU_CHECK_COND(!gate.saved.seg.p,
-			"INT:Gate segment not present",
-			EXCEPTION_NP,num*8+2+(type&CPU_INT_SOFTWARE)?0:1)
 
 		switch (gate.Type()) {
 		case DESC_286_INT_GATE:		case DESC_386_INT_GATE:
 		case DESC_286_TRAP_GATE:	case DESC_386_TRAP_GATE:
 			{
+				CPU_CHECK_COND(!gate.saved.seg.p,
+					"INT:Gate segment not present",
+					EXCEPTION_NP,num*8+2+(type&CPU_INT_SOFTWARE)?0:1)
+
 				Descriptor cs_desc;
 				Bitu gate_sel=gate.GetSelector();
 				Bitu gate_off=gate.GetOffset();
@@ -640,8 +729,9 @@ do_interrupt:
 				cpu.code.big=cs_desc.Big()>0;
 				reg_eip=gate_off;
 
-				if (!(gate.Type()&1))
+				if (!(gate.Type()&1)) {
 					SETFLAGBIT(IF,false);
+				}
 				SETFLAGBIT(TF,false);
 				SETFLAGBIT(NT,false);
 				SETFLAGBIT(VM,false);
@@ -649,6 +739,10 @@ do_interrupt:
 				return;
 			}
 		case DESC_TASK_GATE:
+			CPU_CHECK_COND(!gate.saved.seg.p,
+				"INT:Gate segment not present",
+				EXCEPTION_NP,num*8+2+(type&CPU_INT_SOFTWARE)?0:1)
+
 			CPU_SwitchTask(gate.GetSelector(),TSwitch_CALL_INT,oldeip);
 			if (type & CPU_INT_HAS_ERROR) {
 				//TODO Be sure about this, seems somewhat unclear
@@ -687,15 +781,29 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 				return;
 			} else {
 				if (use32) {
-					reg_eip=CPU_Pop32();
-					SegSet16(cs,CPU_Pop32());
+					Bit32u new_eip=mem_readd(SegPhys(ss) + (reg_esp & cpu.stack.mask));
+					Bit32u tempesp=(reg_esp&cpu.stack.notmask)|((reg_esp+4)&cpu.stack.mask);
+					Bit32u new_cs=mem_readd(SegPhys(ss) + (tempesp & cpu.stack.mask));
+					tempesp=(tempesp&cpu.stack.notmask)|((tempesp+4)&cpu.stack.mask);
+					Bit32u new_flags=mem_readd(SegPhys(ss) + (tempesp & cpu.stack.mask));
+					reg_esp=(tempesp&cpu.stack.notmask)|((tempesp+4)&cpu.stack.mask);
+
+					reg_eip=new_eip;
+					SegSet16(cs,(Bit16u)(new_cs&0xffff));
 					/* IOPL can not be modified in v86 mode by IRET */
-					CPU_SetFlags(CPU_Pop32(),FMASK_NORMAL|FLAG_NT);
+					CPU_SetFlags(new_flags,FMASK_NORMAL|FLAG_NT);
 				} else {
-					reg_eip=CPU_Pop16();
-					SegSet16(cs,CPU_Pop16());
+					Bit16u new_eip=mem_readw(SegPhys(ss) + (reg_esp & cpu.stack.mask));
+					Bit32u tempesp=(reg_esp&cpu.stack.notmask)|((reg_esp+2)&cpu.stack.mask);
+					Bit16u new_cs=mem_readw(SegPhys(ss) + (tempesp & cpu.stack.mask));
+					tempesp=(tempesp&cpu.stack.notmask)|((tempesp+2)&cpu.stack.mask);
+					Bit16u new_flags=mem_readw(SegPhys(ss) + (tempesp & cpu.stack.mask));
+					reg_esp=(tempesp&cpu.stack.notmask)|((tempesp+2)&cpu.stack.mask);
+
+					reg_eip=(Bit32u)new_eip;
+					SegSet16(cs,new_cs);
 					/* IOPL can not be modified in v86 mode by IRET */
-					CPU_SetFlags(CPU_Pop16(),FMASK_NORMAL|FLAG_NT);
+					CPU_SetFlags(new_flags,FMASK_NORMAL|FLAG_NT);
 				}
 				cpu.code.big=false;
 				DestroyConditionFlags();
@@ -708,18 +816,26 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			CPU_CHECK_COND(!cpu_tss.IsValid(),
 				"TASK Iret without valid TSS",
 				EXCEPTION_TS,cpu_tss.selector & 0xfffc)
-			if (!cpu_tss.desc.IsBusy()) LOG(LOG_CPU,LOG_ERROR)("TASK Iret:TSS not busy");
+			if (!cpu_tss.desc.IsBusy()) {
+				LOG(LOG_CPU,LOG_ERROR)("TASK Iret:TSS not busy");
+			}
 			Bitu back_link=cpu_tss.Get_back();
 			CPU_SwitchTask(back_link,TSwitch_IRET,oldeip);
 			return;
 		}
 		Bitu n_cs_sel,n_eip,n_flags;
+		Bit32u tempesp;
 		if (use32) {
-			// commit point
-			n_eip=CPU_Pop32();
-			n_cs_sel=CPU_Pop32() & 0xffff;
-			n_flags=CPU_Pop32();
+			n_eip=mem_readd(SegPhys(ss) + (reg_esp & cpu.stack.mask));
+			tempesp=(reg_esp&cpu.stack.notmask)|((reg_esp+4)&cpu.stack.mask);
+			n_cs_sel=mem_readd(SegPhys(ss) + (tempesp & cpu.stack.mask)) & 0xffff;
+			tempesp=(tempesp&cpu.stack.notmask)|((tempesp+4)&cpu.stack.mask);
+			n_flags=mem_readd(SegPhys(ss) + (tempesp & cpu.stack.mask));
+			tempesp=(tempesp&cpu.stack.notmask)|((tempesp+4)&cpu.stack.mask);
+
 			if ((n_flags & FLAG_VM) && (cpu.cpl==0)) {
+				// commit point
+				reg_esp=tempesp;
 				reg_eip=n_eip & 0xffff;
 				Bitu n_ss,n_esp,n_es,n_ds,n_fs,n_gs;
 				n_esp=CPU_Pop32();
@@ -746,9 +862,14 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			}
 			if (n_flags & FLAG_VM) E_Exit("IRET from pmode to v86 with CPL!=0");
 		} else {
-			n_eip=CPU_Pop16();
-			n_cs_sel=CPU_Pop16();
-			n_flags=(reg_flags & 0xffff0000) | CPU_Pop16();
+			n_eip=mem_readw(SegPhys(ss) + (reg_esp & cpu.stack.mask));
+			tempesp=(reg_esp&cpu.stack.notmask)|((reg_esp+2)&cpu.stack.mask);
+			n_cs_sel=mem_readw(SegPhys(ss) + (tempesp & cpu.stack.mask));
+			tempesp=(tempesp&cpu.stack.notmask)|((tempesp+2)&cpu.stack.mask);
+			n_flags=mem_readw(SegPhys(ss) + (tempesp & cpu.stack.mask));
+			n_flags|=(reg_flags & 0xffff0000);
+			tempesp=(tempesp&cpu.stack.notmask)|((tempesp+2)&cpu.stack.mask);
+
 			if (n_flags & FLAG_VM) E_Exit("VM Flag in 16-bit iret");
 		}
 		CPU_CHECK_COND((n_cs_sel & 0xfffc)==0,
@@ -785,6 +906,9 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 
 		if (n_cs_rpl==cpu.cpl) {	
 			/* Return to same level */
+
+			// commit point
+			reg_esp=tempesp;
 			Segs.phys[cs]=n_cs_desc.GetBase();
 			cpu.code.big=n_cs_desc.Big()>0;
 			Segs.val[cs]=n_cs_sel;
@@ -799,11 +923,13 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			/* Return to outer level */
 			Bitu n_ss,n_esp;
 			if (use32) {
-				n_esp=CPU_Pop32();
-				n_ss=CPU_Pop32() & 0xffff;
+				n_esp=mem_readd(SegPhys(ss) + (tempesp & cpu.stack.mask));
+				tempesp=(tempesp&cpu.stack.notmask)|((tempesp+4)&cpu.stack.mask);
+				n_ss=mem_readd(SegPhys(ss) + (tempesp & cpu.stack.mask)) & 0xffff;
 			} else {
-				n_esp=CPU_Pop16();
-				n_ss=CPU_Pop16();
+				n_esp=mem_readw(SegPhys(ss) + (tempesp & cpu.stack.mask));
+				tempesp=(tempesp&cpu.stack.notmask)|((tempesp+2)&cpu.stack.mask);
+				n_ss=mem_readw(SegPhys(ss) + (tempesp & cpu.stack.mask));
 			}
 			CPU_CHECK_COND((n_ss & 0xfffc)==0,
 				"IRET:Outer level:SS selector zero",
@@ -830,6 +956,8 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			CPU_CHECK_COND(!n_ss_desc.saved.seg.p,
 				"IRET:Outer level:Stack segment not present",
 				EXCEPTION_NP,n_ss & 0xfffc)
+
+			// commit point
 
 			Segs.phys[cs]=n_cs_desc.GetBase();
 			cpu.code.big=n_cs_desc.Big()>0;
@@ -858,35 +986,7 @@ void CPU_IRET(bool use32,Bitu oldeip) {
 			}
 
 			// borland extender, zrdx
-			Descriptor desc;
-			cpu.gdt.GetDescriptor(SegValue(es),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(es,0); break;
-			default: break;	}
-			cpu.gdt.GetDescriptor(SegValue(ds),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(ds,0); break;
-			default: break;	}
-			cpu.gdt.GetDescriptor(SegValue(fs),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(fs,0); break;
-			default: break;	}
-			cpu.gdt.GetDescriptor(SegValue(gs),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(gs,0); break;
-			default: break;	}
+			CPU_CheckSegments();
 
 			LOG(LOG_CPU,LOG_NORMAL)("IRET:Outer level:%X:%X big %d",n_cs_sel,n_eip,cpu.code.big);
 		}
@@ -980,8 +1080,8 @@ void CPU_CALL(bool use32,Bitu selector,Bitu offset,Bitu oldeip) {
 		CPU_CHECK_COND((selector & 0xfffc)==0,
 			"CALL:CS selector zero",
 			EXCEPTION_GP,0)
-		Descriptor call;
 		Bitu rpl=selector & 3;
+		Descriptor call;
 		CPU_CHECK_COND(!cpu.gdt.GetDescriptor(selector,call),
 			"CALL:CS beyond limits",
 			EXCEPTION_GP,selector & 0xfffc)
@@ -1048,16 +1148,17 @@ call_code:
 				CPU_CHECK_COND(n_cs_dpl>cpu.cpl,
 					"CALL:Gate:CS DPL>CPL",
 					EXCEPTION_GP,n_cs_sel & 0xfffc)
-				Bitu n_cs_rpl	= n_cs_sel & 3;
+
+				CPU_CHECK_COND(!n_cs_desc.saved.seg.p,
+					"CALL:Gate:CS not present",
+					EXCEPTION_NP,n_cs_sel & 0xfffc)
+
 				Bitu n_eip		= call.GetOffset();
 				switch (n_cs_desc.Type()) {
 				case DESC_CODE_N_NC_A:case DESC_CODE_N_NC_NA:
 				case DESC_CODE_R_NC_A:case DESC_CODE_R_NC_NA:
 					/* Check if we goto inner priviledge */
 					if (n_cs_dpl < cpu.cpl) {
-						CPU_CHECK_COND(!n_cs_desc.saved.seg.p,
-							"CALL:Gate:CS not present",
-							EXCEPTION_NP,n_cs_sel & 0xfffc)
 						/* Get new SS:ESP out of TSS */
 						Bitu n_ss_sel,n_esp;
 						Descriptor n_ss_desc;
@@ -1088,6 +1189,7 @@ call_code:
 						Bitu o_esp		= reg_esp;
 						Bitu o_ss		= SegValue(ss);
 						PhysPt o_stack  = SegPhys(ss)+(reg_esp & cpu.stack.mask);
+
 
 						// catch pagefaults
 						if (call.saved.gate.paramcount&31) {
@@ -1172,10 +1274,15 @@ call_code:
 		case DESC_386_TSS_A:
 			CPU_CHECK_COND(call.DPL()<cpu.cpl,
 				"CALL:TSS:dpl<cpl",
-				EXCEPTION_TS,selector & 0xfffc)
+				EXCEPTION_GP,selector & 0xfffc)
 			CPU_CHECK_COND(call.DPL()<rpl,
 				"CALL:TSS:dpl<rpl",
 				EXCEPTION_GP,selector & 0xfffc)
+
+			CPU_CHECK_COND(!call.saved.seg.p,
+				"CALL:TSS:Segment not present",
+				EXCEPTION_NP,selector & 0xfffc)
+
 			LOG(LOG_CPU,LOG_NORMAL)("CALL:TSS to %X",selector);
 			CPU_SwitchTask(selector,TSwitch_CALL_INT,oldeip);
 			break;
@@ -1353,35 +1460,7 @@ RET_same_level:
 				reg_sp=(n_esp & 0xffff)+bytes;
 			}
 
-			Descriptor desc;
-			cpu.gdt.GetDescriptor(SegValue(es),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(es,0); break;
-			default: break;	}
-			cpu.gdt.GetDescriptor(SegValue(ds),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(ds,0); break;
-			default: break;	}
-			cpu.gdt.GetDescriptor(SegValue(fs),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(fs,0); break;
-			default: break;	}
-			cpu.gdt.GetDescriptor(SegValue(gs),desc);
-			switch (desc.Type()) {
-			case DESC_DATA_EU_RO_NA:	case DESC_DATA_EU_RO_A:	case DESC_DATA_EU_RW_NA:	case DESC_DATA_EU_RW_A:
-			case DESC_DATA_ED_RO_NA:	case DESC_DATA_ED_RO_A:	case DESC_DATA_ED_RW_NA:	case DESC_DATA_ED_RW_A:
-			case DESC_CODE_N_NC_A:	case DESC_CODE_N_NC_NA:	case DESC_CODE_R_NC_A:	case DESC_CODE_R_NC_NA:
-				if (cpu.cpl>desc.DPL()) CPU_SetSegGeneral(gs,0); break;
-			default: break;	}
+			CPU_CheckSegments();
 
 //			LOG(LOG_MISC,LOG_ERROR)("RET - Higher level to %X:%X RPL %X DPL %X",selector,offset,rpl,desc.DPL());
 			return;
@@ -1523,6 +1602,9 @@ bool CPU_WRITE_CRX(Bitu cr,Bitu value) {
 	/* Check if privileged to access control registers */
 	if (cpu.pmode && (cpu.cpl>0)) return CPU_PrepareException(EXCEPTION_GP,0);
 	if ((cr==1) || (cr>4)) return CPU_PrepareException(EXCEPTION_UD,0);
+	if (CPU_ArchitectureType<CPU_ARCHTYPE_486OLDSLOW) {
+		if (cr==4) return CPU_PrepareException(EXCEPTION_UD,0);
+	}
 	CPU_SET_CRX(cr,value);
 	return false;
 }
@@ -1530,7 +1612,9 @@ bool CPU_WRITE_CRX(Bitu cr,Bitu value) {
 Bitu CPU_GET_CRX(Bitu cr) {
 	switch (cr) {
 	case 0:
-		return cpu.cr0;
+		if (CPU_ArchitectureType>=CPU_ARCHTYPE_PENTIUMSLOW) return cpu.cr0;
+		else if (CPU_ArchitectureType>=CPU_ARCHTYPE_486OLDSLOW) return (cpu.cr0 & 0xe005003f);
+		else return (cpu.cr0 | 0x7ffffff0);
 	case 2:
 		return paging.cr2;
 	case 3:
@@ -1567,7 +1651,11 @@ bool CPU_WRITE_DRX(Bitu dr,Bitu value) {
 		break;
 	case 5:
 	case 7:
-		cpu.drx[7]=(value|0x400) & 0xffff2fff;
+		if (CPU_ArchitectureType<CPU_ARCHTYPE_PENTIUMSLOW) {
+			cpu.drx[7]=(value|0x400) & 0xffff2fff;
+		} else {
+			cpu.drx[7]=(value|0x400);
+		}
 		break;
 	default:
 		LOG(LOG_CPU,LOG_ERROR)("Unhandled MOV DR%d,%X",dr,value);
@@ -1915,7 +2003,8 @@ bool CPU_PopSeg(SegNames seg,bool use32) {
 	return false;
 }
 
-void CPU_CPUID(void) {
+bool CPU_CPUID(void) {
+	if (CPU_ArchitectureType<CPU_ARCHTYPE_486NEWSLOW) return false;
 	switch (reg_eax) {
 	case 0:	/* Vendor ID String and maximum level? */
 		reg_eax=1;  /* Maximum level */ 
@@ -1924,15 +2013,30 @@ void CPU_CPUID(void) {
 		reg_ecx='n' | ('t' << 8) | ('e' << 16) | ('l'<< 24); 
 		break;
 	case 1:	/* get processor type/family/model/stepping and feature flags */
-		reg_eax=0x402;		/* intel 486 sx? */
-		reg_ebx=0;			/* Not Supported */
-		reg_ecx=0;			/* No features */
-		reg_edx=1;			/* FPU */
+		if ((CPU_ArchitectureType==CPU_ARCHTYPE_486NEWSLOW) ||
+			(CPU_ArchitectureType==CPU_ARCHTYPE_MIXED)) {
+			reg_eax=0x402;		/* intel 486dx */
+			reg_ebx=0;			/* Not Supported */
+			reg_ecx=0;			/* No features */
+			reg_edx=0x00000001;	/* FPU */
+		} else if (CPU_ArchitectureType==CPU_ARCHTYPE_PENTIUMSLOW) {
+			reg_eax=0x513;		/* intel pentium */
+			reg_ebx=0;			/* Not Supported */
+			reg_ecx=0;			/* No features */
+			reg_edx=0x00000011;	/* FPU+TimeStamp/RDTSC */
+		} else {
+			return false;
+		}
 		break;
 	default:
 		LOG(LOG_CPU,LOG_ERROR)("Unhandled CPUID Function %x",reg_eax);
+		reg_eax=0;
+		reg_ebx=0;
+		reg_ecx=0;
+		reg_edx=0;
 		break;
 	}
+	return true;
 }
 
 static Bits HLT_Decode(void) {
@@ -2029,6 +2133,29 @@ static void CPU_CycleDecrease(bool pressed) {
 	}
 }
 
+void CPU_Enable_SkipAutoAdjust(void) {
+	if (CPU_CycleAutoAdjust) {
+		CPU_CycleMax /= 2;
+		if (CPU_CycleMax < CPU_CYCLES_LOWER_LIMIT)
+			CPU_CycleMax = CPU_CYCLES_LOWER_LIMIT;
+	}
+	CPU_SkipCycleAutoAdjust=true;
+}
+
+void CPU_Disable_SkipAutoAdjust(void) {
+	CPU_SkipCycleAutoAdjust=false;
+}
+
+
+extern Bit32s ticksDone;
+extern Bit32u ticksScheduled;
+
+void CPU_Reset_AutoAdjust(void) {
+	CPU_IODelayRemoved = 0;
+	ticksDone = 0;
+	ticksScheduled = 0;
+}
+
 class CPU: public Module_base {
 private:
 	static bool inited;
@@ -2038,8 +2165,8 @@ public:
 			Change_Config(configuration);
 			return;
 		}
+//		Section_prop * section=static_cast<Section_prop *>(configuration);
 		inited=true;
-		Section_prop * section=static_cast<Section_prop *>(configuration);
 		reg_eax=0;
 		reg_ebx=0;
 		reg_ecx=0;
@@ -2071,7 +2198,11 @@ public:
 			cpu.drx[i]=0;
 			cpu.trx[i]=0;
 		}
-		cpu.drx[6]=0xffff1ff0;
+		if (CPU_ArchitectureType==CPU_ARCHTYPE_PENTIUMSLOW) {
+			cpu.drx[6]=0xffff0ff0;
+		} else {
+			cpu.drx[6]=0xffff1ff0;
+		}
 		cpu.drx[7]=0x00000400;
 
 		/* Init the cpu cores */
@@ -2093,17 +2224,18 @@ public:
 		CPU_AutoDetermineMode=CPU_AUTODETERMINE_NONE;
 		CPU_CycleLeft=0;//needed ?
 		CPU_Cycles=0;
+		CPU_SkipCycleAutoAdjust=false;
 
-		std::string str;
-		CommandLine cmd(0,section->Get_string("cycles"));
-		cmd.FindCommand(1,str);
-
-		if (str=="max") {
+		Prop_multival* p = section->Get_multival("cycles");
+		std::string type = p->GetSection()->Get_string("type");
+		std::string str ;
+		CommandLine cmd(0,p->GetSection()->Get_string("parameters"));
+		if (type=="max") {
 			CPU_CycleMax=0;
 			CPU_CyclePercUsed=100;
 			CPU_CycleAutoAdjust=true;
 			CPU_CycleLimit=-1;
-			for (Bitu cmdnum=2; cmdnum<=cmd.GetCount(); cmdnum++) {
+			for (Bitu cmdnum=1; cmdnum<=cmd.GetCount(); cmdnum++) {
 				if (cmd.FindCommand(cmdnum,str)) {
 					if (str.find('%')==str.length()-1) {
 						str.erase(str.find('%'));
@@ -2123,12 +2255,12 @@ public:
 				}
 			}
 		} else {
-			if (str=="auto") {
+			if (type=="auto") {
 				CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CYCLES;
 				CPU_CycleMax=3000;
 				CPU_OldCycleMax=3000;
 				CPU_CyclePercUsed=100;
-				for (Bitu cmdnum=2; cmdnum<=cmd.GetCount(); cmdnum++) {
+				for (Bitu cmdnum=0; cmdnum<=cmd.GetCount(); cmdnum++) {
 					if (cmd.FindCommand(cmdnum,str)) {
 						if (str.find('%')==str.length()-1) {
 							str.erase(str.find('%'));
@@ -2155,54 +2287,100 @@ public:
 						}
 					}
 				}
-			} else {
+			} else if(type =="fixed") {
+				cmd.FindCommand(1,str);
 				int rmdval=0;
 				std::istringstream stream(str);
 				stream >> rmdval;
 				CPU_CycleMax=(Bit32s)rmdval;
+			} else {
+				std::istringstream stream(type);
+				int rmdval=0;
+				stream >> rmdval;
+				if(rmdval) CPU_CycleMax=(Bit32s)rmdval;
 			}
 			CPU_CycleAutoAdjust=false;
 		}
+
 		CPU_CycleUp=section->Get_int("cycleup");
 		CPU_CycleDown=section->Get_int("cycledown");
-		const char * core=section->Get_string("core");
+		std::string core(section->Get_string("core"));
 		cpudecoder=&CPU_Core_Normal_Run;
-		if (!strcasecmp(core,"normal")) {
+		if (core == "normal") {
 			cpudecoder=&CPU_Core_Normal_Run;
-		} else if (!strcasecmp(core,"simple")) {
+		} else if (core =="simple") {
 			cpudecoder=&CPU_Core_Simple_Run;
-		} else if (!strcasecmp(core,"full")) {
+		} else if (core == "full") {
 			cpudecoder=&CPU_Core_Full_Run;
-		} 
+		} else if (core == "auto") {
+			cpudecoder=&CPU_Core_Normal_Run;
 #if (C_DYNAMIC_X86)
-		else if (!strcasecmp(core,"dynamic")) {
+			CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CORE;
+		}
+		else if (core == "dynamic") {
 			cpudecoder=&CPU_Core_Dyn_X86_Run;
 			CPU_Core_Dyn_X86_SetFPUMode(true);
-		} else if (!strcasecmp(core,"dynamic_nodhfpu")) {
+		} else if (core == "dynamic_nodhfpu") {
 			cpudecoder=&CPU_Core_Dyn_X86_Run;
 			CPU_Core_Dyn_X86_SetFPUMode(false);
-		} else if (!strcasecmp(core,"auto")) {
-			cpudecoder=&CPU_Core_Normal_Run;
-			CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CORE;
-		} 
 #elif (C_DYNREC)
-		else if (!strcasecmp(core,"dynamic")) {
-			cpudecoder=&CPU_Core_Dynrec_Run;
-		} else if (!strcasecmp(core,"auto")) {
-			cpudecoder=&CPU_Core_Normal_Run;
 			CPU_AutoDetermineMode|=CPU_AUTODETERMINE_CORE;
-		} 
+		}
+		else if (core == "dynamic") {
+			cpudecoder=&CPU_Core_Dynrec_Run;
+#else
+
 #endif
-		else {
-			LOG_MSG("CPU:Unknown core type %s, switching back to normal.",core);
 		}
 
 #if (C_DYNAMIC_X86)
-		CPU_Core_Dyn_X86_Cache_Init(!strcasecmp(core,"dynamic") || !strcasecmp(core,"dynamic_nodhfpu"));
+		CPU_Core_Dyn_X86_Cache_Init((core == "dynamic") || (core == "dynamic_nodhfpu"));
 #elif (C_DYNREC)
-		CPU_Core_Dynrec_Cache_Init(!strcasecmp(core,"dynamic"));
+		CPU_Core_Dynrec_Cache_Init( core == "dynamic" );
 #endif
-	
+
+		CPU_ArchitectureType = CPU_ARCHTYPE_MIXED;
+		std::string cputype(section->Get_string("cputype"));
+		if (cputype == "auto") {
+			CPU_ArchitectureType = CPU_ARCHTYPE_MIXED;
+		} else if (cputype == "386") {
+			CPU_ArchitectureType = CPU_ARCHTYPE_386FAST;
+		} else if (cputype == "386_prefetch") {
+			CPU_ArchitectureType = CPU_ARCHTYPE_386FAST;
+			if (core == "normal") {
+				cpudecoder=&CPU_Core_Prefetch_Run;
+				CPU_PrefetchQueueSize = 16;
+			} else if (core == "auto") {
+				cpudecoder=&CPU_Core_Prefetch_Run;
+				CPU_PrefetchQueueSize = 16;
+				CPU_AutoDetermineMode&=(~CPU_AUTODETERMINE_CORE);
+			} else {
+				E_Exit("prefetch queue emulation requires the normal core setting.");
+			}
+		} else if (cputype == "386_slow") {
+			CPU_ArchitectureType = CPU_ARCHTYPE_386SLOW;
+		} else if (cputype == "486_slow") {
+			CPU_ArchitectureType = CPU_ARCHTYPE_486NEWSLOW;
+		} else if (cputype == "486_prefetch") {
+			CPU_ArchitectureType = CPU_ARCHTYPE_486NEWSLOW;
+			if (core == "normal") {
+				cpudecoder=&CPU_Core_Prefetch_Run;
+				CPU_PrefetchQueueSize = 32;
+			} else if (core == "auto") {
+				cpudecoder=&CPU_Core_Prefetch_Run;
+				CPU_PrefetchQueueSize = 32;
+				CPU_AutoDetermineMode&=(~CPU_AUTODETERMINE_CORE);
+			} else {
+				E_Exit("prefetch queue emulation requires the normal core setting.");
+			}
+		} else if (cputype == "pentium_slow") {
+			CPU_ArchitectureType = CPU_ARCHTYPE_PENTIUMSLOW;
+		}
+
+		if (CPU_ArchitectureType>=CPU_ARCHTYPE_486NEWSLOW) CPU_flag_id_toggle=FLAG_ID;
+		else CPU_flag_id_toggle=0;
+
+
 		if(CPU_CycleMax <= 0) CPU_CycleMax = 3000;
 		if(CPU_CycleUp <= 0)   CPU_CycleUp = 500;
 		if(CPU_CycleDown <= 0) CPU_CycleDown = 20;

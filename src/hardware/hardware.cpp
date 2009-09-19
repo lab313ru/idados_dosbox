@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,9 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: hardware.cpp,v 1.18 2007-01-08 19:45:40 qbix79 Exp $ */
+/* $Id: hardware.cpp,v 1.22 2009-04-26 18:24:36 qbix79 Exp $ */
 
-#include <dirent.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -30,13 +29,14 @@
 #include "mapper.h"
 #include "pic.h"
 #include "render.h"
+#include "cross.h"
 
 #if (C_SSHOT)
 #include <png.h>
 #include "../libs/zmbv/zmbv.cpp"
 #endif
 
-static char * capturedir;
+static std::string capturedir;
 extern const char* RunningProgram;
 Bitu CaptureState;
 
@@ -82,31 +82,44 @@ static struct {
 } capture;
 
 FILE * OpenCaptureFile(const char * type,const char * ext) {
-	Bitu last=0;
-	char file_name[CROSS_LEN];
-	char file_start[16];
-	DIR * dir;struct dirent * dir_ent;
-	/* Find a filename to open */
-	dir=opendir(capturedir);
-	if (!dir) {
-		LOG_MSG("Can't open dir %s for capturing %s",capturedir,type);
+	if(capturedir.empty()) {
+		LOG_MSG("Please specify a capture directory");
 		return 0;
+	}
+
+	Bitu last=0;
+	char file_start[16];
+	dir_information * dir;
+	/* Find a filename to open */
+	dir = open_directory(capturedir.c_str());
+	if (!dir) {
+		//Try creating it first
+		Cross::CreateDir(capturedir);
+		dir=open_directory(capturedir.c_str());
+		if(!dir) {
+		
+			LOG_MSG("Can't open dir %s for capturing %s",capturedir.c_str(),type);
+			return 0;
+		}
 	}
 	strcpy(file_start,RunningProgram);
 	lowcase(file_start);
 	strcat(file_start,"_");
-	while ((dir_ent=readdir(dir))) {
-		char tempname[CROSS_LEN];
-		strcpy(tempname,dir_ent->d_name);
+	bool is_directory;
+	char tempname[CROSS_LEN];
+	bool testRead = read_directory_first(dir, tempname, is_directory );
+	for ( ; testRead; testRead = read_directory_next(dir, tempname, is_directory) ) {
 		char * test=strstr(tempname,ext);
-		if (!test || strlen(test)!=strlen(ext)) continue;
+		if (!test || strlen(test)!=strlen(ext)) 
+			continue;
 		*test=0;
 		if (strncasecmp(tempname,file_start,strlen(file_start))!=0) continue;
 		Bitu num=atoi(&tempname[strlen(file_start)]);
 		if (num>=last) last=num+1;
 	}
-	closedir(dir);
-	sprintf(file_name,"%s%c%s%03d%s",capturedir,CROSS_FILESPLIT,file_start,last,ext);
+	close_directory( dir );
+	char file_name[CROSS_LEN];
+	sprintf(file_name,"%s%c%s%03d%s",capturedir.c_str(),CROSS_FILESPLIT,file_start,last,ext);
 	/* Open the actual file */
 	FILE * handle=fopen(file_name,"wb");
 	if (handle) {
@@ -147,10 +160,10 @@ static void CAPTURE_AddAviChunk(const char * tag, Bit32u size, void * data, Bit3
 }
 #endif
 
+#if (C_SSHOT)
 static void CAPTURE_VideoEvent(bool pressed) {
 	if (!pressed)
 		return;
-#if (C_SSHOT)
 	if (CaptureState & CAPTURE_VIDEO) {
 		/* Close the video */
 		CaptureState &= ~CAPTURE_VIDEO;
@@ -283,12 +296,12 @@ static void CAPTURE_VideoEvent(bool pressed) {
 	} else {
 		CaptureState |= CAPTURE_VIDEO;
 	}
-#endif
 }
+#endif
 
 void CAPTURE_AddImage(Bitu width, Bitu height, Bitu bpp, Bitu pitch, Bitu flags, float fps, Bit8u * data, Bit8u * pal) {
-	Bitu i;
 #if (C_SSHOT)
+	Bitu i;
 	Bit8u doubleRow[SCALER_MAXWIDTH*4];
 	Bitu countWidth = width;
 
@@ -543,11 +556,13 @@ skip_video:
 }
 
 
+#if (C_SSHOT)
 static void CAPTURE_ScreenShotEvent(bool pressed) {
 	if (!pressed)
 		return;
 	CaptureState |= CAPTURE_IMAGE;
 }
+#endif
 
 
 /* WAV capturing */
@@ -717,7 +732,8 @@ class HARDWARE:public Module_base{
 public:
 	HARDWARE(Section* configuration):Module_base(configuration){
 		Section_prop * section = static_cast<Section_prop *>(configuration);
-		capturedir = (char *)section->Get_string("captures");
+		Prop_path* proppath= section->Get_path("captures");
+		capturedir = proppath->realpath;
 		CaptureState = 0;
 		MAPPER_AddHandler(CAPTURE_WaveEvent,MK_f6,MMOD1,"recwave","Rec Wave");
 		MAPPER_AddHandler(CAPTURE_MidiEvent,MK_f8,MMOD1|MMOD2,"caprawmidi","Cap MIDI");

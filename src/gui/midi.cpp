@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -79,6 +79,7 @@ MidiHandler Midi_none;
 
 #if defined(MACOSX)
 
+#include "midi_coremidi.h"
 #include "midi_coreaudio.h"
 
 #elif defined (WIN32)
@@ -102,6 +103,7 @@ static struct {
 	Bitu cmd_len;
 	Bitu cmd_pos;
 	Bit8u cmd_buf[8];
+	Bit8u rt_buf[8];
 	struct {
 		Bit8u buf[SYSEX_SIZE];
 		Bitu used;
@@ -111,6 +113,12 @@ static struct {
 } midi;
 
 void MIDI_RawOutByte(Bit8u data) {
+	/* Test for a realtime MIDI message */
+	if (data>=0xf8) {
+		midi.rt_buf[0]=data;
+		midi.handler->PlayMsg(midi.rt_buf);
+		return;
+	}	 
 	/* Test for a active sysex tranfer */
 	if (midi.status==0xf0) {
 		if (!(data&0x80)) { 
@@ -154,8 +162,8 @@ class MIDI:public Module_base{
 public:
 	MIDI(Section* configuration):Module_base(configuration){
 		Section_prop * section=static_cast<Section_prop *>(configuration);
-		const char * dev=section->Get_string("device");
-		const char * conf=section->Get_string("config");
+		const char * dev=section->Get_string("mididevice");
+		const char * conf=section->Get_string("midiconfig");
 		/* If device = "default" go for first handler that works */
 		MidiHandler * handler;
 //		MAPPER_AddHandler(MIDI_SaveRawEvent,MK_f8,MMOD1|MMOD2,"caprawmidi","Cap MIDI");

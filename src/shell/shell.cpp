@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,17 +16,18 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.88 2007-08-17 17:58:46 qbix79 Exp $ */
+/* $Id: shell.cpp,v 1.99 2009-05-14 18:44:54 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
 #include "dosbox.h"
 #include "regs.h"
-#include "setup.h"
+#include "control.h"
 #include "shell.h"
 #include "callback.h"
 #include "support.h"
+
 
 Bitu call_shellstop;
 /* Larger scope so shell_del autoexec can use it to
@@ -98,7 +99,7 @@ void AutoexecObject::CreateAutoexec(void) {
 		}
 		sprintf((autoexec_data+auto_len),"%s\r\n",(*it).c_str());
 	}
-	if(first_shell) VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,strlen(autoexec_data));
+	if(first_shell) VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,(Bit32u)strlen(autoexec_data));
 }
 
 AutoexecObject::~AutoexecObject(){
@@ -211,34 +212,34 @@ void DOS_Shell::ParseLine(char * line) {
 	num = GetRedirection(line,&in, &out,&append);
 	if (num>1) LOG_MSG("SHELL:Multiple command on 1 line not supported");
 	if (in || out) {
-			normalstdin  = (psp->GetFileHandle(0) != 0xff); 
-			normalstdout = (psp->GetFileHandle(1) != 0xff); 
+		normalstdin  = (psp->GetFileHandle(0) != 0xff); 
+		normalstdout = (psp->GetFileHandle(1) != 0xff); 
 	}
 	if (in) {
-		if(DOS_OpenFile(in,0,&dummy)) { //Test if file exists
+		if(DOS_OpenFile(in,OPEN_READ,&dummy)) {	//Test if file exists
 			DOS_CloseFile(dummy);
 			LOG_MSG("SHELL:Redirect input from %s",in);
-			if(normalstdin) DOS_CloseFile(0); //Close stdin
-			DOS_OpenFile(in,0,&dummy); //Open new stdin
+			if(normalstdin) DOS_CloseFile(0);	//Close stdin
+			DOS_OpenFile(in,OPEN_READ,&dummy);	//Open new stdin
 		}
 	}
 	if (out){
 		LOG_MSG("SHELL:Redirect output to %s",out);
 		if(normalstdout) DOS_CloseFile(1);
-		if(!normalstdin && !in) DOS_OpenFile("con",2,&dummy);
+		if(!normalstdin && !in) DOS_OpenFile("con",OPEN_READWRITE,&dummy);
 		bool status = true;
 		/* Create if not exist. Open if exist. Both in read/write mode */
 		if(append) {
-			if( (status = DOS_OpenFile(out,2,&dummy)) ) {
+			if( (status = DOS_OpenFile(out,OPEN_READWRITE,&dummy)) ) {
 				 DOS_SeekFile(1,&bigdummy,DOS_SEEK_END);
 			} else {
-				status = DOS_CreateFile(out,2,&dummy); //Create if not exists.
+				status = DOS_CreateFile(out,DOS_ATTR_ARCHIVE,&dummy);	//Create if not exists.
 			}
+		} else {
+			status = DOS_OpenFileExtended(out,OPEN_READWRITE,DOS_ATTR_ARCHIVE,0x12,&dummy,&dummy2);
 		}
-		else 
-			status = DOS_OpenFileExtended(out,2,2,0x12,&dummy,&dummy2);
 		
-		if(!status && normalstdout) DOS_OpenFile("con",2,&dummy); //Read only file, open con again
+		if(!status && normalstdout) DOS_OpenFile("con",OPEN_READWRITE,&dummy); //Read only file, open con again
 		if(!normalstdin && !in) DOS_CloseFile(0);
 	}
 	/* Run the actual command */
@@ -246,13 +247,13 @@ void DOS_Shell::ParseLine(char * line) {
 	/* Restore handles */
 	if(in) {
 		DOS_CloseFile(0);
-		if(normalstdin) DOS_OpenFile("con",2,&dummy);
+		if(normalstdin) DOS_OpenFile("con",OPEN_READWRITE,&dummy);
 		free(in);
 	}
 	if(out) {
 		DOS_CloseFile(1);
-		if(!normalstdin) DOS_OpenFile("con",2,&dummy);
-		if(normalstdout) DOS_OpenFile("con",2,&dummy);
+		if(!normalstdin) DOS_OpenFile("con",OPEN_READWRITE,&dummy);
+		if(normalstdout) DOS_OpenFile("con",OPEN_READWRITE,&dummy);
 		if(!normalstdin) DOS_CloseFile(0);
 		free(out);
 	}
@@ -263,21 +264,19 @@ void DOS_Shell::ParseLine(char * line) {
 void DOS_Shell::RunInternal(void)
 {
 	char input_line[CMD_MAXLINE] = {0};
-	std::string line;
 	while(bf && bf->ReadLine(input_line)) 
 	{
 		if (echo) {
 				if (input_line[0] != '@') {
 					ShowPrompt();
-					WriteOut(input_line);
-					WriteOut("\n");
+					WriteOut_NoParsing(input_line);
+					WriteOut_NoParsing("\n");
 				};
 			};
 		ParseLine(input_line);
 	}
 	return;
 }
-
 
 void DOS_Shell::Run(void) {
 	char input_line[CMD_MAXLINE] = {0};
@@ -291,14 +290,12 @@ void DOS_Shell::Run(void) {
 		return;
 	}
 	/* Start a normal shell and check for a first command init */
-	if(machine != MCH_HERC) { //Hide it for hercules as that looks too weird
-		WriteOut(MSG_Get("SHELL_STARTUP_BEGIN"),VERSION);
+	WriteOut(MSG_Get("SHELL_STARTUP_BEGIN"),VERSION);
 #if C_DEBUG
-		WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
+	WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
 #endif
-		if(machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
-		WriteOut(MSG_Get("SHELL_STARTUP_END"));
-	}
+	if (machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
+	WriteOut(MSG_Get("SHELL_STARTUP_END"));
 
 	if (cmd->FindString("/INIT",line,true)) {
 		strcpy(input_line,line.c_str());
@@ -311,18 +308,18 @@ void DOS_Shell::Run(void) {
 				if (echo) {
 					if (input_line[0]!='@') {
 						ShowPrompt();
-						WriteOut(input_line);
-						WriteOut("\n");
+						WriteOut_NoParsing(input_line);
+						WriteOut_NoParsing("\n");
 					};
 				};
-			ParseLine(input_line);
-			if (echo) WriteOut("\n");
+				ParseLine(input_line);
+				if (echo) WriteOut("\n");
 			}
 		} else {
 			if (echo) ShowPrompt();
 			InputCommand(input_line);
 			ParseLine(input_line);
-			if (echo && !bf) WriteOut("\n");
+			if (echo && !bf) WriteOut_NoParsing("\n");
 		}
 	} while (!exit);
 }
@@ -333,7 +330,7 @@ void DOS_Shell::SyntaxError(void) {
 
 class AUTOEXEC:public Module_base {
 private:
-	AutoexecObject autoexec[16];
+	AutoexecObject autoexec[17];
 	AutoexecObject autoexec_echo;
 public:
 	AUTOEXEC(Section* configuration):Module_base(configuration) {
@@ -341,9 +338,12 @@ public:
 		std::string line;
 		Section_line * section=static_cast<Section_line *>(configuration);
 
-		/* add stuff from the configfile unless -noautexec is specified. */
-		char * extra=const_cast<char*>(section->data.c_str());
-		if (extra && !control->cmdline->FindExist("-noautoexec",true)) {
+		/* Check -securemode switch to disable mount/imgmount/boot after running autoexec.bat */
+		bool secure = control->cmdline->FindExist("-securemode",true);
+
+		/* add stuff from the configfile unless -noautexec or -securemode is specified. */
+		char * extra = const_cast<char*>(section->data.c_str());
+		if (extra && !secure && !control->cmdline->FindExist("-noautoexec",true)) {
 			/* detect if "echo off" is the first line */
 			bool echo_off  = !strncasecmp(extra,"echo off",8);
 			if (!echo_off) echo_off = !strncasecmp(extra,"@echo off",9);
@@ -372,7 +372,10 @@ public:
 		/* Check for first command being a directory or file */
 		char buffer[CROSS_LEN];
 		char cross_filesplit[2] = {CROSS_FILESPLIT , 0};
-		if (control->cmdline->FindCommand(1,line)) {
+		/* Combining -securemode and no parameter leaves you with a lovely Z:\. */ 
+		if ( !control->cmdline->FindCommand(1,line) ) { 
+			if ( secure ) autoexec[12].Install("z:\\config.com -securemode");
+		} else {
 			struct stat test;
 			strcpy(buffer,line.c_str());
 			if (stat(buffer,&test)){
@@ -384,6 +387,7 @@ public:
 			if (test.st_mode & S_IFDIR) { 
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
+				if(secure) autoexec[14].Install("z:\\config.com -securemode");
 			} else {
 				char* name = strrchr(buffer,CROSS_FILESPLIT);
 				if (!name) { //Only a filename 
@@ -401,20 +405,23 @@ public:
 				autoexec[13].Install("C:");
 				upcase(name);
 				if(strstr(name,".BAT") != 0) {
+					if(secure) autoexec[14].Install("z:\\config.com -securemode");
 					/* BATch files are called else exit will not work */
-					autoexec[14].Install(std::string("CALL ") + name);
+					autoexec[15].Install(std::string("CALL ") + name);
 				} else if((strstr(name,".IMG") != 0) || (strstr(name,".IMA") !=0)) {
+					//No secure mode here as boot is destructive and enabling securemode disables boot
 					/* Boot image files */
-					autoexec[14].Install(std::string("BOOT ") + name);
+					autoexec[15].Install(std::string("BOOT ") + name);
 				} else {
-					autoexec[14].Install(name);
+					if(secure) autoexec[14].Install("z:\\config.com -securemode");
+					autoexec[15].Install(name);
 				}
 
-				if(addexit) autoexec[15].Install("exit");
+				if(addexit) autoexec[16].Install("exit");
 			}
 		}
 nomount:
-		VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,strlen(autoexec_data));
+		VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,(Bit32u)strlen(autoexec_data));
 	}
 };
 
@@ -491,7 +498,7 @@ void SHELL_Init() {
 	);
 	MSG_Add("SHELL_STARTUP_END",
 	        "\xBA \033[32mHAVE FUN!\033[37m                                                          \xBA\n"
-	        "\xBA \033[32mThe DOSBox Team\033[37m                                                    \xBA\n"
+	        "\xBA \033[32mThe DOSBox Team \033[33mhttp://www.dosbox.com\033[37m                              \xBA\n"
 	        "\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
@@ -543,7 +550,7 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_ATTRIB_HELP","Does nothing. Provided for compatibility.\n");
 	MSG_Add("SHELL_CMD_PATH_HELP","Provided for compatibility.\n");
 	MSG_Add("SHELL_CMD_VER_HELP","View and set the reported DOS version.\n");
-	MSG_Add("SHELL_CMD_VER_VER","DOSBox version %s. Reported DOS version %d.%d.\n");
+	MSG_Add("SHELL_CMD_VER_VER","DOSBox version %s. Reported DOS version %d.%02d.\n");
 
 	/* Regular startup */
 	call_shellstop=CALLBACK_Allocate();
@@ -556,8 +563,8 @@ void SHELL_Init() {
 	PROGRAMS_MakeFile("COMMAND.COM",SHELL_ProgramStart);
 
 	/* Now call up the shell for the first time */
-	Bit16u psp_seg=DOS_GetMemory(16+3)+1;
-	Bit16u env_seg=DOS_GetMemory(1+(4096/16))+1;
+	Bit16u psp_seg=DOS_FIRST_SHELL;
+	Bit16u env_seg=DOS_FIRST_SHELL+19; //DOS_GetMemory(1+(4096/16))+1;
 	Bit16u stack_seg=DOS_GetMemory(2048/16);
 	SegSet16(ss,stack_seg);
 	reg_sp=2046;
@@ -570,20 +577,26 @@ void SHELL_Init() {
 	/* Set up int 23 to "int 20" in the psp. Fixes what.exe */
 	real_writed(0,0x23*4,((Bit32u)psp_seg<<16));
 
-	/* Setup MCB and the environment */
+	/* Setup MCBs */
+	DOS_MCB pspmcb((Bit16u)(psp_seg-1));
+	pspmcb.SetPSPSeg(psp_seg);	// MCB of the command shell psp
+	pspmcb.SetSize(0x10+2);
+	pspmcb.SetType(0x4d);
 	DOS_MCB envmcb((Bit16u)(env_seg-1));
-	envmcb.SetPSPSeg(psp_seg);
-	envmcb.SetSize(4096/16);
+	envmcb.SetPSPSeg(psp_seg);	// MCB of the command shell environment
+	envmcb.SetSize(0x28);
+	envmcb.SetType(0x4d);
 	
+	/* Setup environment */
 	PhysPt env_write=PhysMake(env_seg,0);
-	MEM_BlockWrite(env_write,path_string,strlen(path_string)+1);
-	env_write+=strlen(path_string)+1;
-	MEM_BlockWrite(env_write,comspec_string,strlen(comspec_string)+1);
-	env_write+=strlen(comspec_string)+1;
+	MEM_BlockWrite(env_write,path_string,(Bitu)(strlen(path_string)+1));
+	env_write += (PhysPt)(strlen(path_string)+1);
+	MEM_BlockWrite(env_write,comspec_string,(Bitu)(strlen(comspec_string)+1));
+	env_write += (PhysPt)(strlen(comspec_string)+1);
 	mem_writeb(env_write++,0);
 	mem_writew(env_write,1);
 	env_write+=2;
-	MEM_BlockWrite(env_write,full_name,strlen(full_name)+1);
+	MEM_BlockWrite(env_write,full_name,(Bitu)(strlen(full_name)+1));
 
 	DOS_PSP psp(psp_seg);
 	psp.MakeNew(0);
@@ -594,24 +607,24 @@ void SHELL_Init() {
 	 * In order to achieve this: First open 2 files. Close the first and
 	 * duplicate the second (so the entries get 01) */
 	Bit16u dummy=0;
-	DOS_OpenFile("CON",2,&dummy);/* STDIN  */
-	DOS_OpenFile("CON",2,&dummy);/* STDOUT */
-	DOS_CloseFile(0);            /* Close STDIN */
-	DOS_ForceDuplicateEntry(1,0);/* "new" STDIN */
-	DOS_ForceDuplicateEntry(1,2);/* STDERR */
-	DOS_OpenFile("CON",2,&dummy);/* STDAUX */
-	DOS_OpenFile("CON",2,&dummy);/* STDPRN */
+	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDIN  */
+	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDOUT */
+	DOS_CloseFile(0);							/* Close STDIN */
+	DOS_ForceDuplicateEntry(1,0);				/* "new" STDIN */
+	DOS_ForceDuplicateEntry(1,2);				/* STDERR */
+	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDAUX */
+	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDPRN */
 
 	psp.SetParent(psp_seg);
 	/* Set the environment */
 	psp.SetEnvironment(env_seg);
 	/* Set the command line for the shell start up */
 	CommandTail tail;
-	tail.count=strlen(init_line);
+	tail.count=(Bit8u)strlen(init_line);
 	strcpy(tail.buffer,init_line);
 	MEM_BlockWrite(PhysMake(psp_seg,128),&tail,128);
+	
 	/* Setup internal DOS Variables */
-
 	dos.dta(RealMake(psp_seg,0x80));
 	dos.psp(psp_seg);
 

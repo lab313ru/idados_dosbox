@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: video.h,v 1.26 2009-05-27 09:15:41 qbix79 Exp $ */
+
 #ifndef DOSBOX_VIDEO_H
 #define DOSBOX_VIDEO_H
 
@@ -24,7 +26,7 @@
 typedef enum {
 	GFX_CallBackReset,
 	GFX_CallBackStop,
-	GFX_CallBackRedraw,
+	GFX_CallBackRedraw
 } GFX_CallBackFunctions_t;
 
 typedef void (*GFX_CallBack_t)( GFX_CallBackFunctions_t function );
@@ -65,6 +67,8 @@ void GFX_Stop(void);
 void GFX_SwitchFullScreen(void);
 bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch);
 void GFX_EndUpdate( const Bit16u *changedLines );
+void GFX_GetSize(int &width, int &height, bool &fullscreen);
+void GFX_LosingFocus(void);
 
 #if defined (WIN32)
 bool GFX_SDLUsingWinDIB(void);

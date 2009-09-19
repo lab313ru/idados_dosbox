@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: messages.cpp,v 1.19 2007-01-08 19:45:41 qbix79 Exp $ */
+/* $Id: messages.cpp,v 1.22 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +25,7 @@
 #include "cross.h"
 #include "support.h"
 #include "setup.h"
+#include "control.h"
 #include <list>
 #include <string>
 using namespace std;
@@ -47,10 +48,11 @@ void MSG_Add(const char * _name, const char* _val) {
 	/* Find the message */
 	for(itmb tel=Lang.begin();tel!=Lang.end();tel++) {
 		if((*tel).name==_name) { 
+//			LOG_MSG("double entry for %s",_name); //Message file might be loaded before default text messages
 			return;
 		}
 	}
-	/* Even if the message doesn't exist add it */
+	/* if the message doesn't exist add it */
 	Lang.push_back(MessageBlock(_name,_val));
 }
 
@@ -132,5 +134,8 @@ void MSG_Init(Section_prop * section) {
 	std::string file_name;
 	if (control->cmdline->FindString("-lang",file_name,true)) {
 		LoadMessageFile(file_name.c_str());
-	} else LoadMessageFile(section->Get_string("language"));
+	} else {
+		Prop_path* pathprop = section->Get_path("language");
+		if(pathprop) LoadMessageFile(pathprop->realpath.c_str());
+	}
 }

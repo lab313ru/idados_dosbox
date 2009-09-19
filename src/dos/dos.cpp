@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos.cpp,v 1.104 2007-07-27 19:17:23 qbix79 Exp $ */
+/* $Id: dos.cpp,v 1.117 2009-04-16 12:16:52 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -46,7 +46,13 @@ void DOS_SetError(Bit16u code) {
 #ifdef DATA_TRANSFERS_TAKE_CYCLES
 #include "cpu.h"
 static inline void modify_cycles(Bits value) {
-	if((4*value+5) < CPU_Cycles) CPU_Cycles -= 4*value; else CPU_Cycles = 5;
+	if((4*value+5) < CPU_Cycles) {
+		CPU_Cycles -= 4*value;
+		CPU_IODelayRemoved += 4*value;
+	} else {
+		CPU_IODelayRemoved += CPU_Cycles/*-5*/; //don't want to mess with negative
+		CPU_Cycles = 5;
+	}
 }
 #else
 static inline void modify_cycles(Bits /* value */) {
@@ -61,8 +67,8 @@ static Bitu DOS_21Handler(void) {
 		psp.SetStack(RealMake(SegValue(ss),reg_sp-18));
 	}
 
-	char name1[DOSNAMEBUF+1];
-	char name2[DOSNAMEBUF+1];
+	char name1[DOSNAMEBUF+2+DOS_NAMELENGTH_ASCII];
+	char name2[DOSNAMEBUF+2+DOS_NAMELENGTH_ASCII];
 	switch (reg_ah) {
 	case 0x01:		/* Read character from STDIN, with echo */
 		{	
@@ -83,9 +89,10 @@ static Bitu DOS_21Handler(void) {
 		{
 			Bit16u port = real_readw(0x40,0);
 			if(port!=0 && serialports[0]) {
+				Bit8u status;
 				// RTS/DTR on
 				IO_WriteB(port+4,0x3);
-				serialports[0]->Getchar(&reg_al,true, 0xFFFFFFFF);
+				serialports[0]->Getchar(&reg_al, &status, true, 0xFFFFFFFF);
 			}
 		}
 		break;
@@ -384,14 +391,13 @@ static Bitu DOS_21Handler(void) {
 		//TODO First get normal files executing
 		// Important: This service does not set the carry flag!
 		DOS_ResizeMemory(dos.psp(),&reg_dx);
-		DOS_Terminate(true);
-		dos.return_code=reg_al; //Officially a field in the SDA
+		DOS_Terminate(true,reg_al);
 		dos.return_mode=RETURN_TSR;
 		break;
 	case 0x1f: /* Get drive parameter block for default drive */
 	case 0x32: /* Get drive parameter block for specific drive */
 		{	/* Officially a dpb should be returned as well. The disk detection part is implemented */
-			Bitu drive=reg_dl;if(!drive || reg_ah==0x1f) drive=dos.current_drive;else drive--;
+			Bitu drive=reg_dl;if(!drive || reg_ah==0x1f) drive = DOS_GetDefaultDrive();else drive--;
 			if(Drives[drive]) {
 				reg_al = 0x00;
 				SegSet16(ds,dos.tables.dpb);
@@ -435,13 +441,21 @@ static Bitu DOS_21Handler(void) {
 		{
 			Bit16u bytes,clusters,free;
 			Bit8u sectors;
-			if(DOS_GetFreeDiskSpace(reg_dl,&bytes,&sectors,&clusters,&free)) {
+			if (DOS_GetFreeDiskSpace(reg_dl,&bytes,&sectors,&clusters,&free)) {
 				reg_ax=sectors;
 				reg_bx=free;
 				reg_cx=bytes;
 				reg_dx=clusters;
 			} else {
-				reg_ax=0xffff;
+				Bit8u drive=reg_dl;
+				if (drive==0) drive=DOS_GetDefaultDrive();
+				else drive--;
+				if (drive<2) {
+					// floppy drive, non-present drivesdisks issue floppy check through int24
+					// (critical error handler); needed for Mixed up Mother Goose (hook)
+//					CALLBACK_RunRealInt(0x24);
+				}
+				reg_ax=0xffff;	// invalid drive specified
 			}
 		}
 		break;
@@ -579,20 +593,24 @@ static Bitu DOS_21Handler(void) {
 		}
 	case 0x43:					/* Get/Set file attributes */
 		MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
-		switch (reg_al)
+		switch (reg_al) {
 		case 0x00:				/* Get */
-		{
-			if (DOS_GetFileAttr(name1,&reg_cx)) {
-				reg_ax=reg_cx; /* Undocumented */   
-				CALLBACK_SCF(false);
-			} else {
-				CALLBACK_SCF(true);
-				reg_ax=dos.errorcode;
-			}
-			break;
+			{
+				Bit16u attr_val=reg_cx;
+				if (DOS_GetFileAttr(name1,&attr_val)) {
+					reg_cx=attr_val;
+					reg_ax=attr_val; /* Undocumented */   
+					CALLBACK_SCF(false);
+				} else {
+					CALLBACK_SCF(true);
+					reg_ax=dos.errorcode;
+				}
+				break;
+			};
 		case 0x01:				/* Set */
 			LOG(LOG_MISC,LOG_ERROR)("DOS:Set File Attributes for %s not supported",name1);
 			if (DOS_SetFileAttr(name1,reg_cx)) {
+				reg_ax=0x202;	/* ax destroyed */
 				CALLBACK_SCF(false);
 			} else {
 				CALLBACK_SCF(true);
@@ -601,7 +619,8 @@ static Bitu DOS_21Handler(void) {
 			break;
 		default:
 			LOG(LOG_MISC,LOG_ERROR)("DOS:0x43:Illegal subfunction %2X",reg_al);
-			CALLBACK_SCF(false);
+			reg_ax=1;
+			CALLBACK_SCF(true);
 			break;
 		}
 		break;
@@ -632,7 +651,7 @@ static Bitu DOS_21Handler(void) {
 		break;
 	case 0x47:					/* CWD Get current directory */
 		if (DOS_GetCurrentDir(reg_dl,name1)) {
-			MEM_BlockWrite(SegPhys(ds)+reg_si,name1,strlen(name1)+1);	
+			MEM_BlockWrite(SegPhys(ds)+reg_si,name1,(Bitu)(strlen(name1)+1));	
 			reg_ax=0x0100;
 			CALLBACK_SCF(false);
 		} else {
@@ -689,7 +708,7 @@ static Bitu DOS_21Handler(void) {
 		reg_ax=0x4c00;				/* Terminate Program */
 	case 0x4c:					/* EXIT Terminate with return code */
 	        {
-			if (DOS_Terminate(false)) {
+			if (DOS_Terminate(false,reg_al)) {
 				/* This can't ever return false normally */
 			} else {            
 				reg_ax=dos.errorcode;
@@ -808,7 +827,7 @@ static Bitu DOS_21Handler(void) {
 			MEM_StrCopy(SegPhys(ds)+reg_dx,name1,DOSNAMEBUF);
 			if (DOS_CreateTempFile(name1,&handle)) {
 				reg_ax=handle;
-				MEM_BlockWrite(SegPhys(ds)+reg_dx,name1,strlen(name1)+1);
+				MEM_BlockWrite(SegPhys(ds)+reg_dx,name1,(Bitu)(strlen(name1)+1));
 				CALLBACK_SCF(false);
 			} else {
 				reg_ax=dos.errorcode;
@@ -836,6 +855,11 @@ static Bitu DOS_21Handler(void) {
 			}
 			break;
 		}
+	case 0x5c:			/* FLOCK File region locking */
+		DOS_SetError(DOSERR_FUNCTION_NUMBER_INVALID);
+		reg_ax = dos.errorcode;
+		CALLBACK_SCF(true);
+		break;
 	case 0x5d:					/* Network Functions */
 		if(reg_al == 0x06) {
 			SegSet16(ds,DOS_SDA_SEG);
@@ -852,7 +876,7 @@ static Bitu DOS_21Handler(void) {
 	case 0x60:					/* Canonicalize filename or path */
 		MEM_StrCopy(SegPhys(ds)+reg_si,name1,DOSNAMEBUF);
 		if (DOS_Canonicalize(name1,name2)) {
-				MEM_BlockWrite(SegPhys(es)+reg_di,name2,strlen(name2)+1);	
+				MEM_BlockWrite(SegPhys(es)+reg_di,name2,(Bitu)(strlen(name2)+1));	
 				CALLBACK_SCF(false);
 			} else {
 				reg_ax=dos.errorcode;
@@ -964,6 +988,14 @@ static Bitu DOS_21Handler(void) {
 			CALLBACK_SCF(false);
 			break;
 		};
+	case 0x68:                  /* FFLUSH Commit file */
+		if(DOS_FlushFile(reg_bl)) {
+			CALLBACK_SCF(false);
+		} else {
+			reg_ax = dos.errorcode;
+			CALLBACK_SCF(true);
+		}
+		break;
 	case 0x69:					/* Get/Set disk serial number */
 		{
 			switch(reg_al)		{
@@ -987,14 +1019,13 @@ static Bitu DOS_21Handler(void) {
 			CALLBACK_SCF(true);
 		}
 		break;
+
 	case 0x71:					/* Unknown probably 4dos detection */
 		reg_ax=0x7100;
 		CALLBACK_SCF(true);
 		LOG(LOG_DOSMISC,LOG_NORMAL)("DOS:Windows long file name support call %2X",reg_al);
 		break;
 
-	case 0x68:                  /* FFLUSH Commit file */
-		CALLBACK_SCF(false);    //mirek
 	case 0xE0:
 	case 0x18:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
 	case 0x1d:	            	/* NULL Function for CP/M compatibility or Extended rename FCB */
@@ -1003,7 +1034,6 @@ static Bitu DOS_21Handler(void) {
 	case 0x6b:		            /* NULL Function */
 	case 0x61:		            /* UNUSED */
 	case 0xEF:                  /* Used in Ancient Art Of War CGA */
-	case 0x5c:					/* FLOCK File region locking */
 	case 0x5e:					/* More Network Functions */
 	default:
 		LOG(LOG_DOSMISC,LOG_ERROR)("DOS:Unhandled call %02X al=%02X. Set al to default of 0",reg_ah,reg_al);
@@ -1011,8 +1041,7 @@ static Bitu DOS_21Handler(void) {
 		break;
 	};
 	return CBRET_NONE;
-/* That's it now let's get it working */
-};
+}
 
 
 static Bitu DOS_20Handler(void) {
@@ -1024,7 +1053,7 @@ static Bitu DOS_20Handler(void) {
 static Bitu DOS_27Handler(void) {
 	// Terminate & stay resident
 	Bit16u para = (reg_dx/16)+((reg_dx % 16)>0);
-	if (DOS_ResizeMemory(dos.psp(),&para)) DOS_Terminate(true);
+	if (DOS_ResizeMemory(dos.psp(),&para)) DOS_Terminate(true,0);
 	return CBRET_NONE;
 }
 
@@ -1062,8 +1091,13 @@ public:
 		callback[0].Install(DOS_20Handler,CB_IRET,"DOS Int 20");
 		callback[0].Set_RealVec(0x20);
 
-		callback[1].Install(DOS_21Handler,CB_IRET_STI,"DOS Int 21");
+		callback[1].Install(DOS_21Handler,CB_INT21,"DOS Int 21");
 		callback[1].Set_RealVec(0x21);
+	//Pseudo code for int 21
+	// sti
+	// callback 
+	// iret
+	// retf  <- int 21 4c jumps here to mimic a retf Cyber
 
 		callback[2].Install(DOS_25Handler,CB_RETF,"DOS Int 25");
 		callback[2].Set_RealVec(0x25);
@@ -1092,6 +1126,7 @@ public:
 		DOS_SetupMemory();								/* Setup first MCB */
 		DOS_SetupPrograms();
 		DOS_SetupMisc();							/* Some additional dos interrupts */
+		DOS_SDA(DOS_SDA_SEG,DOS_SDA_OFS).SetDrive(25); /* Else the next call gives a warning. */
 		DOS_SetDefaultDrive(25);
 	
 		dos.version.major=5;
@@ -1104,7 +1139,7 @@ public:
 		dos.date.day=(Bit8u)loctime->tm_mday;
 		dos.date.month=(Bit8u)loctime->tm_mon+1;
 		dos.date.year=(Bit16u)loctime->tm_year+1900;
-		Bit32u ticks=(Bit32u)((loctime->tm_hour*3600+loctime->tm_min*60+loctime->tm_sec)*18.2);
+		Bit32u ticks=(Bit32u)((loctime->tm_hour*3600+loctime->tm_min*60+loctime->tm_sec)*(float)PIT_TICK_RATE/65536.0);
 		mem_writed(BIOS_TIMER,ticks);
 	}
 	~DOS(){

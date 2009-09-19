@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: ipx.cpp,v 1.13 2007-02-22 08:30:47 qbix79 Exp $ */
+/* $Id: ipx.cpp,v 1.17 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 
@@ -748,7 +748,7 @@ static bool pingCheck(IPXHeader * outHeader) {
 	return false;
 }
 
-bool ConnectToServer(char *strAddr) {
+bool ConnectToServer(char const *strAddr) {
 	int numsent;
 	UDPpacket regPacket;
 	IPXHeader regHeader;
@@ -951,7 +951,8 @@ public:
 						isIpxServer = true;
 						ConnectToServer("localhost");
 					} else {
-						WriteOut("IPX Tunneling Server failed to start\n");
+						WriteOut("IPX Tunneling Server failed to start.\n");
+						if(udpPort < 1024) WriteOut("Try a port number above 1024. See IPXNET HELP CONNECT on how to specify a port.\n");
 					}
 				} else {
 					WriteOut("IPX Tunneling Server already started\n");
@@ -1038,7 +1039,7 @@ public:
 					WriteOut("IPX Tunneling Client not connected.\n");
 					return;
 				}
-
+				TIMER_DelTickHandler(&IPX_ClientLoop);
 				WriteOut("Sending broadcast ping:\n\n");
 				pingSend();
 				ticks = GetTicks();
@@ -1048,6 +1049,7 @@ public:
 						WriteOut("Response from %d.%d.%d.%d, port %d time=%dms\n", CONVIP(pingHead.src.addr.byIP.host), SDLNet_Read16(&pingHead.src.addr.byIP.port), GetTicks() - ticks);
 					}
 				}
+				TIMER_AddTickHandler(&IPX_ClientLoop);
 				return;
 			}
 		}

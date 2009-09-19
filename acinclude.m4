@@ -305,7 +305,7 @@ AC_SUBST(ALSA_LIBS)
 
 AH_TOP([
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -323,7 +323,18 @@ AH_TOP([
  */
 ])
 
-AH_BOTTOM([#define INLINE inline])
+AH_BOTTOM([#if C_ATTRIBUTE_ALWAYS_INLINE
+#define INLINE inline __attribute__((always_inline))
+#else
+#define INLINE inline
+#endif])
+
+AH_BOTTOM([#if C_ATTRIBUTE_FASTCALL
+#define DB_FASTCALL __attribute__((fastcall))
+#else
+#define DB_FASTCALL
+#endif])
+
 
 AH_BOTTOM([#if C_HAS_ATTRIBUTE
 #define GCC_ATTRIBUTE(x) __attribute__ ((x))

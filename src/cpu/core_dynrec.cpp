@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: core_dynrec.cpp,v 1.12 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 
@@ -90,7 +92,7 @@
 
 
 // access to a general register
-#define DRCD_REG(reg) (&cpu_regs.regs[reg].dword)
+#define DRCD_REG_VAL(reg) (&cpu_regs.regs[reg].dword)
 // access to a segment register
 #define DRCD_SEG_VAL(seg) (&Segs.val[seg])
 // access to the physical value of a segment register/selector
@@ -136,6 +138,7 @@ static struct {
 #define X86			0x01
 #define X86_64		0x02
 #define MIPSEL		0x03
+#define ARMV4LE		0x04
 
 #if C_TARGETCPU == X86_64
 #include "core_dynrec/risc_x64.h"
@@ -143,6 +146,8 @@ static struct {
 #include "core_dynrec/risc_x86.h"
 #elif C_TARGETCPU == MIPSEL
 #include "core_dynrec/risc_mipsel32.h"
+#elif C_TARGETCPU == ARMV4LE
+#include "core_dynrec/risc_armv4le.h"
 #endif
 
 #include "core_dynrec/decoder.h"
@@ -151,8 +156,7 @@ CacheBlockDynRec * LinkBlocks(BlockReturn ret) {
 	CacheBlockDynRec * block=NULL;
 	// the last instruction was a control flow modifying instruction
 	Bitu temp_ip=SegPhys(cs)+reg_eip;
-	Bitu temp_page=temp_ip >> 12;
-	CodePageHandlerDynRec * temp_handler=(CodePageHandlerDynRec *)paging.tlb.handler[temp_page];
+	CodePageHandlerDynRec * temp_handler=(CodePageHandlerDynRec *)get_tlb_readhandler(temp_ip);
 	if (temp_handler->flags & PFLAG_HASCODE) {
 		// see if the target is an already translated block
 		block=temp_handler->FindCacheBlock(temp_ip & 4095);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@ void DEBUG_Enable(bool pressed);
 void DEBUG_CheckExecuteBreakpoint(Bit16u seg, Bit32u off);
 bool DEBUG_ExitLoop(void);
 void DEBUG_RefreshPage(char scroll);
+Bitu DEBUG_EnableDebugger(void);
 void DEBUG_AppTerminated();
 
 extern Bitu cycle_count;

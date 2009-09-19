@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_misc.cpp,v 1.51 2007-08-22 11:21:28 qbix79 Exp $ */
+/* $Id: shell_misc.cpp,v 1.54 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -78,7 +78,7 @@ void DOS_Shell::InputCommand(char * line) {
 							line[str_index ++] = c;
 							DOS_WriteFile(STDOUT,&c,&n);
 						}
-						str_len = str_index = it_history->length();
+						str_len = str_index = (Bitu)it_history->length();
 						size = CMD_MAXLINE - str_index - 2;
 						line[str_len] = 0;
 					}
@@ -124,7 +124,7 @@ void DOS_Shell::InputCommand(char * line) {
 						outc(8); outc(' '); outc(8);
 					}
 					strcpy(line, it_history->c_str());
-					len = it_history->length();
+					len = (Bit16u)it_history->length();
 					str_len = str_index = len;
 					size = CMD_MAXLINE - str_index - 2;
 					DOS_WriteFile(STDOUT, (Bit8u *)line, &len);
@@ -153,7 +153,7 @@ void DOS_Shell::InputCommand(char * line) {
 						outc(8); outc(' '); outc(8);
 					}
 					strcpy(line, it_history->c_str());
-					len = it_history->length();
+					len = (Bit16u)it_history->length();
 					str_len = str_index = len;
 					size = CMD_MAXLINE - str_index - 2;
 					DOS_WriteFile(STDOUT, (Bit8u *)line, &len);
@@ -224,15 +224,15 @@ void DOS_Shell::InputCommand(char * line) {
 
 					if (p_completion_start) {
 						p_completion_start ++;
-						completion_index = str_len - strlen(p_completion_start);
+						completion_index = (Bit16u)(str_len - strlen(p_completion_start));
 					} else {
 						p_completion_start = line;
 						completion_index = 0;
 					}
 
 					char *path;
-					if ((path = strrchr(line+completion_index,'\\'))) completion_index = path-line+1;
-					if ((path = strrchr(line+completion_index,'/'))) completion_index = path-line+1;
+					if ((path = strrchr(line+completion_index,'\\'))) completion_index = (Bit16u)(path-line+1);
+					if ((path = strrchr(line+completion_index,'/'))) completion_index = (Bit16u)(path-line+1);
 
 					// build the completion list
 					char mask[DOS_PATHLENGTH];
@@ -295,7 +295,7 @@ void DOS_Shell::InputCommand(char * line) {
 					}
 
 					strcpy(&line[completion_index], it_completion->c_str());
-					len = it_completion->length();
+					len = (Bit16u)it_completion->length();
 					str_len = str_index = completion_index + len;
 					size = CMD_MAXLINE - str_index - 2;
 					DOS_WriteFile(STDOUT, (Bit8u *)it_completion->c_str(), &len);
@@ -354,6 +354,7 @@ void DOS_Shell::InputCommand(char * line) {
 	if (l_completion.size()) l_completion.clear();
 }
 
+std::string full_arguments = "";
 bool DOS_Shell::Execute(char * name,char * args) {
 /* return true  => don't check for hardware changes in do_command 
  * return false =>       check for hardware changes in do_command */
@@ -438,7 +439,7 @@ bool DOS_Shell::Execute(char * name,char * args) {
 		if(strcasecmp(extension, ".com") !=0) 
 		{
 			if(strcasecmp(extension, ".exe") !=0) return false;
-	  	}
+		}
 		/* Run the .exe or .com file from the shell */
 		/* Allocate some stack space for tables in physical memory */
 		reg_sp-=0x200;
@@ -447,13 +448,17 @@ bool DOS_Shell::Execute(char * name,char * args) {
 		block.Clear();
 		//Add a filename
 		RealPt file_name=RealMakeSeg(ss,reg_sp+0x20);
-		MEM_BlockWrite(Real2Phys(file_name),fullname,strlen(fullname)+1);
+		MEM_BlockWrite(Real2Phys(file_name),fullname,(Bitu)(strlen(fullname)+1));
+
+		/* HACK: Store full commandline for mount and imgmount */
+		full_arguments.assign(line);
+
 		/* Fill the command line */
 		CommandTail cmdtail;
 		cmdtail.count = 0;
 		memset(&cmdtail.buffer,0,126); //Else some part of the string is unitialized (valgrind)
 		if (strlen(line)>126) line[126]=0;
-		cmdtail.count=strlen(line);
+		cmdtail.count=(Bit8u)strlen(line);
 		memcpy(cmdtail.buffer,line,strlen(line));
 		cmdtail.buffer[strlen(line)]=0xd;
 		/* Copy command line in stack block too */

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: risc_x86.h,v 1.9 2009-05-27 09:15:41 qbix79 Exp $ */
 
 
 // some configuring defines that specify the capabilities of this architecture
@@ -505,3 +507,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 #endif
 }
 #endif
+
+static void cache_block_closing(Bit8u* block_start,Bitu block_size) { }
+
+static void cache_block_before_close(void) { }

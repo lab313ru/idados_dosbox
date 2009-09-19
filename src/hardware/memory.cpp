@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: memory.cpp,v 1.51 2007-07-19 18:58:39 c2woody Exp $ */
+/* $Id: memory.cpp,v 1.56 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -28,6 +28,7 @@
 #include <string.h>
 
 #define PAGES_IN_BLOCK	((1024*1024)/MEM_PAGE_SIZE)
+#define SAFE_MEMORY	32
 #define MAX_MEMORY	64
 #define MAX_PAGE_ENTRIES (MAX_MEMORY*1024*1024/4096)
 #define LFB_PAGES	512
@@ -48,6 +49,7 @@ static struct MemoryBlock {
 		Bitu		end_page;
 		Bitu		pages;
 		PageHandler *handler;
+		PageHandler *mmiohandler;
 	} lfb;
 	struct {
 		bool enabled;
@@ -122,8 +124,9 @@ static IllegalPageHandler illegal_page_handler;
 static RAMPageHandler ram_page_handler;
 static ROMPageHandler rom_page_handler;
 
-void MEM_SetLFB(Bitu page, Bitu pages, PageHandler *handler) {
+void MEM_SetLFB(Bitu page, Bitu pages, PageHandler *handler, PageHandler *mmiohandler) {
 	memory.lfb.handler=handler;
+	memory.lfb.mmiohandler=mmiohandler;
 	memory.lfb.start_page=page;
 	memory.lfb.end_page=page+pages;
 	memory.lfb.pages=pages;
@@ -135,6 +138,9 @@ PageHandler * MEM_GetPageHandler(Bitu phys_page) {
 		return memory.phandlers[phys_page];
 	} else if ((phys_page>=memory.lfb.start_page) && (phys_page<memory.lfb.end_page)) {
 		return memory.lfb.handler;
+	} else if ((phys_page>=memory.lfb.start_page+0x01000000/4096) &&
+				(phys_page<memory.lfb.start_page+0x01000000/4096+16)) {
+		return memory.lfb.mmiohandler;
 	}
 	return &illegal_page_handler;
 }
@@ -447,35 +453,35 @@ void mem_unalignedwrited(PhysPt address,Bit32u val) {
 }
 
 
-bool mem_unalignedreadw_checked_x86(PhysPt address, Bit16u * val) {
+bool mem_unalignedreadw_checked(PhysPt address, Bit16u * val) {
 	Bit8u rval1,rval2;
-	if (mem_readb_checked_x86(address+0, &rval1)) return true;
-	if (mem_readb_checked_x86(address+1, &rval2)) return true;
+	if (mem_readb_checked(address+0, &rval1)) return true;
+	if (mem_readb_checked(address+1, &rval2)) return true;
 	*val=(Bit16u)(((Bit8u)rval1) | (((Bit8u)rval2) << 8));
 	return false;
 }
 
-bool mem_unalignedreadd_checked_x86(PhysPt address, Bit32u * val) {
+bool mem_unalignedreadd_checked(PhysPt address, Bit32u * val) {
 	Bit8u rval1,rval2,rval3,rval4;
-	if (mem_readb_checked_x86(address+0, &rval1)) return true;
-	if (mem_readb_checked_x86(address+1, &rval2)) return true;
-	if (mem_readb_checked_x86(address+2, &rval3)) return true;
-	if (mem_readb_checked_x86(address+3, &rval4)) return true;
+	if (mem_readb_checked(address+0, &rval1)) return true;
+	if (mem_readb_checked(address+1, &rval2)) return true;
+	if (mem_readb_checked(address+2, &rval3)) return true;
+	if (mem_readb_checked(address+3, &rval4)) return true;
 	*val=(Bit32u)(((Bit8u)rval1) | (((Bit8u)rval2) << 8) | (((Bit8u)rval3) << 16) | (((Bit8u)rval4) << 24));
 	return false;
 }
 
-bool mem_unalignedwritew_checked_x86(PhysPt address,Bit16u val) {
-	if (mem_writeb_checked_x86(address,(Bit8u)(val & 0xff))) return true;val>>=8;
-	if (mem_writeb_checked_x86(address+1,(Bit8u)(val & 0xff))) return true;
+bool mem_unalignedwritew_checked(PhysPt address,Bit16u val) {
+	if (mem_writeb_checked(address,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked(address+1,(Bit8u)(val & 0xff))) return true;
 	return false;
 }
 
-bool mem_unalignedwrited_checked_x86(PhysPt address,Bit32u val) {
-	if (mem_writeb_checked_x86(address,(Bit8u)(val & 0xff))) return true;val>>=8;
-	if (mem_writeb_checked_x86(address+1,(Bit8u)(val & 0xff))) return true;val>>=8;
-	if (mem_writeb_checked_x86(address+2,(Bit8u)(val & 0xff))) return true;val>>=8;
-	if (mem_writeb_checked_x86(address+3,(Bit8u)(val & 0xff))) return true;
+bool mem_unalignedwrited_checked(PhysPt address,Bit32u val) {
+	if (mem_writeb_checked(address,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked(address+1,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked(address+2,(Bit8u)(val & 0xff))) return true;val>>=8;
+	if (mem_writeb_checked(address+3,(Bit8u)(val & 0xff))) return true;
 	return false;
 }
 
@@ -514,6 +520,13 @@ static Bitu read_p92(Bitu port,Bitu iolen) {
 	return memory.a20.controlport | (memory.a20.enabled ? 0x02 : 0);
 }
 
+void RemoveEMSPageFrame(void) {
+	/* Setup rom at 0xe0000-0xf0000 */
+	for (Bitu ct=0xe0;ct<0xf0;ct++) {
+		memory.phandlers[ct] = &rom_page_handler;
+	}
+}
+
 void PreparePCJRCartRom(void) {
 	/* Setup rom at 0xd0000-0xe0000 */
 	for (Bitu ct=0xd0;ct<0xe0;ct++) {
@@ -540,6 +553,10 @@ public:
 		if (memsize > MAX_MEMORY-1) {
 			LOG_MSG("Maximum memory size is %d MB",MAX_MEMORY - 1);
 			memsize = MAX_MEMORY-1;
+		}
+		if (memsize > SAFE_MEMORY-1) {
+			LOG_MSG("Memory sizes above %d MB are NOT recommended.",SAFE_MEMORY - 1);
+			LOG_MSG("Stick with the default values unless you are absolutely certain.");
 		}
 		MemBase = new Bit8u[memsize*1024*1024];
 		if (!MemBase) E_Exit("Can't allocate main memory of %d MB",memsize);

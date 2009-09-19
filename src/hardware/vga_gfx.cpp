@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: vga_gfx.cpp,v 1.19 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "inout.h"
@@ -139,7 +141,10 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 		*/
 		break;
 	case 6: /* Miscellaneous Register */
-		gfx(miscellaneous)=val;
+		if ((gfx(miscellaneous) ^ val) & 0x0c) {
+			gfx(miscellaneous)=val;
+			VGA_DetermineMode();
+		} else gfx(miscellaneous)=val;
 		VGA_SetupHandlers();
 		/*
 			0	Indicates Graphics Mode if set, Alphanumeric mode else.
@@ -171,14 +176,16 @@ static void write_p3cf(Bitu port,Bitu val,Bitu iolen) {
 				display memory.
 		*/
 		break;
-	case 9:	/* Unknown */
-		/* Crystal Dreams seems to like to write tothis register very weird */
-		if (!index9warned) {
+	default:
+		if (svga.write_p3cf) {
+			svga.write_p3cf(gfx(index), val, iolen);
+			break;
+		}
+		if (gfx(index) == 9 && !index9warned) {
 			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:3CF:Write %2X to illegal index 9",val);
 			index9warned=true;
+			break;
 		}
-		break;
-	default:
 		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:3CF:Write %2X to illegal index %2X",val,gfx(index));
 		break;
 	}
@@ -205,7 +212,10 @@ static Bitu read_p3cf(Bitu port,Bitu iolen) {
 	case 8: /* Bit Mask Register */
 		return gfx(bit_mask);
 	default:
+		if (svga.read_p3cf)
+			return svga.read_p3cf(gfx(index), iolen);
 		LOG(LOG_VGAMISC,LOG_NORMAL)("Reading from illegal index %2X in port %4X",static_cast<Bit32u>(gfx(index)),port);
+		break;
 	}
 	return 0;	/* Compiler happy */
 }
@@ -213,11 +223,13 @@ static Bitu read_p3cf(Bitu port,Bitu iolen) {
 
 
 void VGA_SetupGFX(void) {
-	if (machine==MCH_VGA) {
+	if (IS_EGAVGA_ARCH) {
 		IO_RegisterWriteHandler(0x3ce,write_p3ce,IO_MB);
 		IO_RegisterWriteHandler(0x3cf,write_p3cf,IO_MB);
-		IO_RegisterReadHandler(0x3ce,read_p3ce,IO_MB);
-		IO_RegisterReadHandler(0x3cf,read_p3cf,IO_MB);
+		if (IS_VGA_ARCH) {
+			IO_RegisterReadHandler(0x3ce,read_p3ce,IO_MB);
+			IO_RegisterReadHandler(0x3cf,read_p3cf,IO_MB);
+		}
 	}
 }
 

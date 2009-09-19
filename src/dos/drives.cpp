@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: drives.cpp,v 1.15 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 #include "dos_system.h"
@@ -38,7 +40,8 @@ bool WildFileCmp(const char * file, const char * wild)
 
 	find_ext=strrchr(file,'.');
 	if (find_ext) {
-		Bitu size=find_ext-file;if (size>8) size=8;
+		Bitu size=(Bitu)(find_ext-file);
+		if (size>8) size=8;
 		memcpy(file_name,file,size);
 		find_ext++;
 		memcpy(file_ext,find_ext,(strlen(find_ext)>3) ? 3 : strlen(find_ext)); 
@@ -48,7 +51,8 @@ bool WildFileCmp(const char * file, const char * wild)
 	upcase(file_name);upcase(file_ext);
 	find_ext=strrchr(wild,'.');
 	if (find_ext) {
-		Bitu size=find_ext-wild;if (size>8) size=8;
+		Bitu size=(Bitu)(find_ext-wild);
+		if (size>8) size=8;
 		memcpy(wild_name,wild,size);
 		find_ext++;
 		memcpy(wild_ext,find_ext,(strlen(find_ext)>3) ? 3 : strlen(find_ext));
@@ -71,6 +75,36 @@ checkext:
 		r++;
 	}
 	return true;
+}
+
+void Set_Label(char const * const input, char * const output, bool cdrom) {
+	Bitu togo     = 8;
+	Bitu vnamePos = 0;
+	Bitu labelPos = 0;
+	bool point    = false;
+
+	//spacepadding the filenamepart to include spaces after the terminating zero is more closely to the specs. (not doing this now)
+	// HELLO\0' '' '
+
+	while (togo > 0) {
+		if (input[vnamePos]==0) break;
+		if (!point && (input[vnamePos]=='.')) {	togo=4; point=true; }
+
+		//another mscdex quirk. Label is not always uppercase. (Daggerfall)
+		output[labelPos] = (cdrom?input[vnamePos]:toupper(input[vnamePos]));
+
+		labelPos++; vnamePos++;
+		togo--;
+		if ((togo==0) && !point) {
+			if (input[vnamePos]=='.') vnamePos++;
+			output[labelPos]='.'; labelPos++; point=true; togo=3;
+		}
+	};
+	output[labelPos]=0;
+
+	//Remove trailing dot. except when on cdrom and filename is exactly 8 (9 including the dot) letters. MSCDEX feature/bug (fifa96 cdrom detection)
+	if((labelPos > 0) && (output[labelPos-1] == '.') && !(cdrom && labelPos ==9))
+		output[labelPos-1] = 0;
 }
 
 

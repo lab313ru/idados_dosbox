@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: vga_attr.cpp,v 1.30 2009-05-27 09:15:41 qbix79 Exp $ */
+
 #include "dosbox.h"
 #include "inout.h"
 #include "vga.h"
@@ -27,6 +29,17 @@ void VGA_ATTR_SetPalette(Bit8u index,Bit8u val) {
 	if (vga.attr.mode_control & 0x80) val = (val&0xf) | (vga.attr.color_select << 4);
 	val &= 63;
 	val |= (vga.attr.color_select & 0xc) << 4;
+	if (GCC_UNLIKELY(machine==MCH_EGA)) {
+		if ((vga.crtc.vertical_total | ((vga.crtc.overflow & 1) << 8)) == 260) {
+			// check for intensity bit
+			if (val&0x10) val|=0x38;
+			else {
+				val&=0x7;
+				// check for special brown
+				if (val==6) val=0x14;
+			}
+		}
+	}
 	VGA_DAC_CombineColor(index,val);
 }
 
@@ -61,6 +74,7 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			*/
 			break;
 		case 0x10: /* Mode Control Register */
+			if (!IS_VGA_ARCH) val&=0x1f;	// not really correct, but should do it
 			if ((attr(mode_control) ^ val) & 0x80) {
 				attr(mode_control)^=0x80;
 				for (Bitu i=0;i<0x10;i++) {
@@ -70,14 +84,15 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			if ((attr(mode_control) ^ val) & 0x08) {
 				VGA_SetBlinking(val & 0x8);
 			}
-			/*
-				Special hacks for games programming registers themselves,
-				Doesn't work if they program EGA16 themselves, 
-				but haven't encountered that yet
-			*/
-			attr(mode_control)=val;
-			VGA_DetermineMode();
-			//TODO 9 bit characters
+			if ((attr(mode_control) ^ val) & 0x04) {
+				attr(mode_control)=val;
+				VGA_DetermineMode();
+				if ((IS_VGA_ARCH) && (svgaCard==SVGA_None)) VGA_StartResize();
+			} else {
+				attr(mode_control)=val;
+				VGA_DetermineMode();
+			}
+
 			/*
 				0	Graphics mode if set, Alphanumeric mode else.
 				1	Monochrome mode if set, color mode else.
@@ -116,7 +131,7 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			attr(horizontal_pel_panning)=val & 0xF;
 			switch (vga.mode) {
 			case M_TEXT:
-				if (val==0x7) vga.config.pel_panning=7;
+				if ((val==0x7) && (svgaCard==SVGA_None)) vga.config.pel_panning=7;
 				if (val>0x7) vga.config.pel_panning=0;
 				else vga.config.pel_panning=val+1;
 				break;
@@ -143,6 +158,10 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			*/
 			break;
 		case 0x14:	/* Color Select Register */
+			if (!IS_VGA_ARCH) {
+				attr(color_select)=0;
+				break;
+			}
 			if (attr(color_select) ^ val) {
 				attr(color_select)=val;
 				for (Bitu i=0;i<0x10;i++) {
@@ -158,6 +177,10 @@ void write_p3c0(Bitu port,Bitu val,Bitu iolen) {
 			*/
 			break;
 		default:
+			if (svga.write_p3c0) {
+				svga.write_p3c0(attr(index), val, iolen);
+				break;
+			}
 			LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:ATTR:Write to unkown Index %2X",attr(index));
 			break;
 		}
@@ -184,22 +207,20 @@ Bitu read_p3c1(Bitu port,Bitu iolen) {
 	case 0x14:	/* Color Select Register */
 		return attr(color_select);
 	default:
+		if (svga.read_p3c1)
+			return svga.read_p3c1(attr(index), iolen);
 		LOG(LOG_VGAMISC,LOG_NORMAL)("VGA:ATTR:Read from unkown Index %2X",attr(index));
 	}
 	return 0;
-};
-
-
-
-
-
-
-void VGA_SetupAttr(void) {
-	if (machine==MCH_VGA) {
-		IO_RegisterReadHandler(0x3c0,read_p3c0,IO_MB);
-		IO_RegisterWriteHandler(0x3c0,write_p3c0,IO_MB);
-		IO_RegisterReadHandler(0x3c1,read_p3c1,IO_MB);
-	}
 }
 
 
+void VGA_SetupAttr(void) {
+	if (IS_EGAVGA_ARCH) {
+		IO_RegisterWriteHandler(0x3c0,write_p3c0,IO_MB);
+		if (IS_VGA_ARCH) {
+			IO_RegisterReadHandler(0x3c0,read_p3c0,IO_MB);
+			IO_RegisterReadHandler(0x3c1,read_p3c1,IO_MB);
+		}
+	}
+}

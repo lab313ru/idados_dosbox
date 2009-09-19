@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: callback.cpp,v 1.37 2007-06-03 16:46:33 c2woody Exp $ */
+/* $Id: callback.cpp,v 1.40 2009-03-03 18:30:41 c2woody Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +34,7 @@
 CallBack_Handler CallBack_Handlers[CB_MAX];
 char* CallBack_Description[CB_MAX];
 
-static Bitu call_stop,call_idle,call_default;
+static Bitu call_stop,call_idle,call_default,call_default2;
 Bitu call_priv_io;
 
 static Bitu illegal_handler(void) {
@@ -77,11 +77,11 @@ void CALLBACK_Idle(void) {
 static Bitu default_handler(void) {
 	LOG(LOG_CPU,LOG_ERROR)("Illegal Unhandled Interrupt Called %X",lastint);
 	return CBRET_NONE;
-};
+}
 
 static Bitu stop_handler(void) {
 	return CBRET_STOP;
-};
+}
 
 
 
@@ -112,13 +112,13 @@ void CALLBACK_SZF(bool val) {
 	Bit16u tempf=mem_readw(SegPhys(ss)+reg_sp+4) & 0xFFBF;
 	Bit16u newZF=(val==true) << 6;
 	mem_writew(SegPhys(ss)+reg_sp+4,(tempf | newZF));
-};
+}
 
 void CALLBACK_SCF(bool val) {
 	Bit16u tempf=mem_readw(SegPhys(ss)+reg_sp+4) & 0xFFFE;
 	Bit16u newCF=(val==true);
 	mem_writew(SegPhys(ss)+reg_sp+4,(tempf | newCF));
-};
+}
 
 void CALLBACK_SetDescription(Bitu nr, const char* descr) {
 	if (descr) {
@@ -126,12 +126,12 @@ void CALLBACK_SetDescription(Bitu nr, const char* descr) {
 		strcpy(CallBack_Description[nr],descr);
 	} else
 		CallBack_Description[nr] = 0;
-};
+}
 
 const char* CALLBACK_GetDescription(Bitu nr) {
 	if (nr>=CB_MAX) return 0;
 	return CallBack_Description[nr];
-};
+}
 
 Bitu CALLBACK_SetupExtra(Bitu callback, Bitu type, PhysPt physAddress, bool use_cb=true) {
 	if (callback>=CB_MAX) 
@@ -268,11 +268,12 @@ Bitu CALLBACK_SetupExtra(Bitu callback, Bitu type, PhysPt physAddress, bool use_
 		phys_writeb(physAddress+0x00,(Bit8u)0x1e);		// push ds
 		phys_writeb(physAddress+0x01,(Bit8u)0x06);		// push es
 		phys_writew(physAddress+0x02,(Bit16u)0x6066);	// pushad
-		phys_writeb(physAddress+0x04,(Bit8u)0xfb);		// sti
-		phys_writeb(physAddress+0x05,(Bit8u)0xFE);		//GRP 4
-		phys_writeb(physAddress+0x06,(Bit8u)0x38);		//Extra Callback instruction
-		phys_writew(physAddress+0x07,callback);			//The immediate word
-		return 0x09;
+		phys_writeb(physAddress+0x04,(Bit8u)0xfc);		// cld
+		phys_writeb(physAddress+0x05,(Bit8u)0xfb);		// sti
+		phys_writeb(physAddress+0x06,(Bit8u)0xFE);		//GRP 4
+		phys_writeb(physAddress+0x07,(Bit8u)0x38);		//Extra Callback instruction
+		phys_writew(physAddress+0x08,callback);			//The immediate word
+		return 0x0a;
 	case CB_IRQ12_RET:	// ps2 mouse int74 return
 		if (use_cb) {
 			phys_writeb(physAddress+0x00,(Bit8u)0xFE);	//GRP 4
@@ -403,6 +404,18 @@ Bitu CALLBACK_SetupExtra(Bitu callback, Bitu type, PhysPt physAddress, bool use_
 		phys_writeb(physAddress+0x0d,(Bit8u)0x1f);		// pop ds
 		phys_writeb(physAddress+0x0e,(Bit8u)0xcf);		//An IRET Instruction
 		return 0x0f; */
+	case CB_INT21:
+		phys_writeb(physAddress+0x00,(Bit8u)0xFB);		//STI
+		if (use_cb) {
+			phys_writeb(physAddress+0x01,(Bit8u)0xFE);	//GRP 4
+			phys_writeb(physAddress+0x02,(Bit8u)0x38);	//Extra Callback instruction
+			phys_writew(physAddress+0x03, callback);	//The immediate word
+			physAddress+=4;
+		}
+		phys_writeb(physAddress+0x01,(Bit8u)0xCF);		//An IRET Instruction
+		phys_writeb(physAddress+0x02,(Bit8u)0xCB);		//A RETF Instruction
+		return (use_cb?7:3);
+
 	default:
 		E_Exit("CALLBACK:Setup:Illegal type %d",type);
 	}
@@ -512,9 +525,11 @@ void CALLBACK_Init(Section* sec) {
 	phys_writeb(CALLBACK_PhysPointer(call_idle)+13,0x38);
 	phys_writew(CALLBACK_PhysPointer(call_idle)+14,call_idle);
 
-	/* Setup all Interrupt to point to the default handler */
+	/* Default handlers for unhandled interrupts that have to be non-null */
 	call_default=CALLBACK_Allocate();
 	CALLBACK_Setup(call_default,&default_handler,CB_IRET,"default");
+	call_default2=CALLBACK_Allocate();
+	CALLBACK_Setup(call_default2,&default_handler,CB_IRET,"default");
    
 	/* Only setup default handler for first half of interrupt table */
 	for (i=0;i<0x40;i++) {
@@ -532,10 +547,11 @@ void CALLBACK_Init(Section* sec) {
 
 	}
 	// setup a few interrupt handlers that point to bios IRETs by default
-	real_writed(0,0x66*4,CALLBACK_RealPointer(call_default)); //war2d
+	real_writed(0,0x0e*4,CALLBACK_RealPointer(call_default2));	//design your own railroad
+	real_writed(0,0x66*4,CALLBACK_RealPointer(call_default));	//war2d
 	real_writed(0,0x67*4,CALLBACK_RealPointer(call_default));
 	real_writed(0,0x68*4,CALLBACK_RealPointer(call_default));
-	real_writed(0,0x5c*4,CALLBACK_RealPointer(call_default)); //Network stuff
+	real_writed(0,0x5c*4,CALLBACK_RealPointer(call_default));	//Network stuff
 	//real_writed(0,0xf*4,0); some games don't like it
 
 	call_priv_io=CALLBACK_Allocate();

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: risc_mipsel32.h,v 1.5 2009-05-27 09:15:41 qbix79 Exp $ */
 
 
 /* MIPS32 (little endian) backend by crazyc */
@@ -36,7 +38,12 @@
 
 // calling convention modifier
 #define DRC_CALL_CONV	/* nothing */
-#define DRC_FC		/* nothing */
+#define DRC_FC			/* nothing */
+
+// use FC_REGS_ADDR to hold the address of "cpu_regs" and to access it using FC_REGS_ADDR
+//#define DRC_USE_REGS_ADDR
+// use FC_SEGS_ADDR to hold the address of "Segs" and to access it using FC_SEGS_ADDR
+//#define DRC_USE_SEGS_ADDR
 
 // register mapping
 typedef Bit8u HostReg;
@@ -75,6 +82,16 @@ typedef Bit8u HostReg;
 
 // temporary register for LEA
 #define TEMP_REG_DRC HOST_t7
+
+#ifdef DRC_USE_REGS_ADDR
+// used to hold the address of "cpu_regs" - preferably filled in function gen_run_code
+#define FC_REGS_ADDR HOST_???
+#endif
+
+#ifdef DRC_USE_SEGS_ADDR
+// used to hold the address of "Segs" - preferably filled in function gen_run_code
+#define FC_SEGS_ADDR HOST_???
+#endif
 
 // save some state to improve code gen
 static bool temp1_valid = false;
@@ -629,4 +646,103 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 	*(Bit32u*)pos=0x0c000000+(((Bit32u)fct_ptr)>>2)&0x3ffffff);		// jal simple_func
 #endif
 }
+#endif
+
+static void cache_block_closing(Bit8u* block_start,Bitu block_size) {
+#ifdef PSP
+// writeback dcache and invalidate icache
+	Bit32u inval_start = ((Bit32u)block_start) & ~63;
+	Bit32u inval_end = (((Bit32u)block_start) + block_size + 64) & ~63;
+	for (;inval_start < inval_end; inval_start+=64) {
+		__builtin_allegrex_cache(0x1a, inval_start);
+		__builtin_allegrex_cache(0x08, inval_start);
+	}
+#endif
+}
+
+static void cache_block_before_close(void) { }
+
+
+#ifdef DRC_USE_SEGS_ADDR
+
+// mov 16bit value from Segs[index] into dest_reg using FC_SEGS_ADDR (index modulo 2 must be zero)
+// 16bit moves may destroy the upper 16bit of the destination register
+static void gen_mov_seg16_to_reg(HostReg dest_reg,Bitu index) {
+// stub
+}
+
+// mov 32bit value from Segs[index] into dest_reg using FC_SEGS_ADDR (index modulo 4 must be zero)
+static void gen_mov_seg32_to_reg(HostReg dest_reg,Bitu index) {
+// stub
+}
+
+// add a 32bit value from Segs[index] to a full register using FC_SEGS_ADDR (index modulo 4 must be zero)
+static void gen_add_seg32_to_reg(HostReg reg,Bitu index) {
+// stub
+}
+
+#endif
+
+#ifdef DRC_USE_REGS_ADDR
+
+// mov 16bit value from cpu_regs[index] into dest_reg using FC_REGS_ADDR (index modulo 2 must be zero)
+// 16bit moves may destroy the upper 16bit of the destination register
+static void gen_mov_regval16_to_reg(HostReg dest_reg,Bitu index) {
+// stub
+}
+
+// mov 32bit value from cpu_regs[index] into dest_reg using FC_REGS_ADDR (index modulo 4 must be zero)
+static void gen_mov_regval32_to_reg(HostReg dest_reg,Bitu index) {
+// stub
+}
+
+// move a 32bit (dword==true) or 16bit (dword==false) value from cpu_regs[index] into dest_reg using FC_REGS_ADDR (if dword==true index modulo 4 must be zero) (if dword==false index modulo 2 must be zero)
+// 16bit moves may destroy the upper 16bit of the destination register
+static void gen_mov_regword_to_reg(HostReg dest_reg,Bitu index,bool dword) {
+// stub
+}
+
+// move an 8bit value from cpu_regs[index]  into dest_reg using FC_REGS_ADDR
+// the upper 24bit of the destination register can be destroyed
+// this function does not use FC_OP1/FC_OP2 as dest_reg as these
+// registers might not be directly byte-accessible on some architectures
+static void gen_mov_regbyte_to_reg_low(HostReg dest_reg,Bitu index) {
+// stub
+}
+
+// move an 8bit value from cpu_regs[index]  into dest_reg using FC_REGS_ADDR
+// the upper 24bit of the destination register can be destroyed
+// this function can use FC_OP1/FC_OP2 as dest_reg which are
+// not directly byte-accessible on some architectures
+static void INLINE gen_mov_regbyte_to_reg_low_canuseword(HostReg dest_reg,Bitu index) {
+// stub
+}
+
+
+// add a 32bit value from cpu_regs[index] to a full register using FC_REGS_ADDR (index modulo 4 must be zero)
+static void gen_add_regval32_to_reg(HostReg reg,Bitu index) {
+// stub
+}
+
+
+// move 16bit of register into cpu_regs[index] using FC_REGS_ADDR (index modulo 2 must be zero)
+static void gen_mov_regval16_from_reg(HostReg src_reg,Bitu index) {
+// stub
+}
+
+// move 32bit of register into cpu_regs[index] using FC_REGS_ADDR (index modulo 4 must be zero)
+static void gen_mov_regval32_from_reg(HostReg src_reg,Bitu index) {
+// stub
+}
+
+// move 32bit (dword==true) or 16bit (dword==false) of a register into cpu_regs[index] using FC_REGS_ADDR (if dword==true index modulo 4 must be zero) (if dword==false index modulo 2 must be zero)
+static void gen_mov_regword_from_reg(HostReg src_reg,Bitu index,bool dword) {
+// stub
+}
+
+// move the lowest 8bit of a register into cpu_regs[index] using FC_REGS_ADDR
+static void gen_mov_regbyte_from_reg_low(HostReg src_reg,Bitu index) {
+// stub
+}
+
 #endif

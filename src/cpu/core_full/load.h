@@ -6,6 +6,9 @@ switch (inst.code.load) {
 	case L_POPdRM:
 		inst_op1_d = Pop_32();
 		goto case_L_MODRM;
+	case L_MODRM_NVM:
+		if ((reg_flags & FLAG_VM) || !cpu.pmode) goto illegalopcode;
+		goto case_L_MODRM;
 case_L_MODRM:
 	case L_MODRM:
 		inst.rm=Fetchb();
@@ -465,7 +468,7 @@ l_M_Ed:
 		AAS();
 		goto nextopcode;
 	case D_CPUID:
-		CPU_CPUID();
+		if (!CPU_CPUID()) goto illegalopcode;
 		goto nextopcode;
 	case D_HLT:
 		if (cpu.pmode && cpu.cpl) EXCEPTION(EXCEPTION_GP);

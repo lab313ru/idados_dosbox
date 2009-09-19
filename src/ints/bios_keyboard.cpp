@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #include "keyboard.h"
 #include "regs.h"
 #include "inout.h"
+#include "dos_inc.h"
 
 /* SDL by default treats numlock and scrolllock different from all other keys.
  * Some linux distros disable this bad behaviour. (for example debian) 

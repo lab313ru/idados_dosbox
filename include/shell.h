@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.h,v 1.21 2007-06-14 08:23:46 qbix79 Exp $ */
+/* $Id: shell.h,v 1.27 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #ifndef DOSBOX_SHELL_H
 #define DOSBOX_SHELL_H
@@ -39,25 +39,28 @@ extern Bitu call_shellstop;
 /* first_shell is used to add and delete stuff from the shell env 
  * by "external" programs. (config) */
 extern Program * first_shell;
-class DOS_Shell;
 
+class DOS_Shell;
 
 class BatchFile {
 public:
-	BatchFile(DOS_Shell * host,char * name, char * cmd_line);
-	~BatchFile();
-	bool ReadLine(char * line);
+	BatchFile(DOS_Shell * host,char const* const name, char const * const cmd_line);
+	virtual ~BatchFile();
+	virtual bool ReadLine(char * line);
 	bool Goto(char * where);
 	void Shift(void);
 	Bit16u file_handle;
+	Bit32u location;
 	bool echo;
 	DOS_Shell * shell;
 	BatchFile * prev;
 	CommandLine * cmd;
 };
 
+class AutoexecEditor;
 class DOS_Shell : public Program {
 private:
+	friend class AutoexecEditor;
 	std::list<std::string> l_history, l_completion;
 
 	char *completion_start;
@@ -121,32 +124,6 @@ struct SHELL_Cmd {
 	void (DOS_Shell::*handler)(char * args);		/* Handler for this command */
 	const char * help;								/* String with command help */
 };
-
-static inline void StripSpaces(char*&args) {
-	while(args && *args && isspace(*reinterpret_cast<unsigned char*>(args)))
-		args++;
-}
-
-static inline char* ExpandDot(char*args, char* buffer) {
-	if(*args=='.')
-	{
-		if(*(args+1)==0)
-		{
-			strcpy(buffer,"*.*");
-			return buffer;
-		}
-		if( (*(args+1)!='.') && (*(args+1)!='\\') )
-		{
-			buffer[0]='*';
-			buffer[1]=0;
-			strcat(buffer,args);
-			return buffer;
-		} else 
-			strcpy (buffer, args); 
-	}
-	else strcpy(buffer,args);
-	return buffer;
-}
 
 /* Object to manage lines in the autoexec.bat The lines get removed from
  * the file if the object gets destroyed. The environment is updated

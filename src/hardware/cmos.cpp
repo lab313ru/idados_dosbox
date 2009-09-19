@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/* $Id: cmos.cpp,v 1.28 2009-05-27 09:15:41 qbix79 Exp $ */
+
 #include <time.h>
 
 #include "dosbox.h"
@@ -23,7 +25,7 @@
 #include "pic.h"
 #include "inout.h"
 #include "mem.h"
-#include "bios.h"
+#include "bios_disk.h"
 #include "setup.h"
 
 static struct {
@@ -63,6 +65,8 @@ static void cmos_checktimer(void) {
 	if (!cmos.timer.div || !cmos.timer.enabled) return;
 	LOG(LOG_PIT,LOG_NORMAL)("RTC Timer at %.2f hz",1000.0/cmos.timer.delay);
 	PIC_AddEvent(cmos_timerevent,cmos.timer.delay);
+//	PIC_AddEvent(cmos_timerevent,(double)cmos.timer.delay-fmod(PIC_FullIndex(),(double)cmos.timer.delay)); //Should be more like a real pc. Check
+//	status reg A reading with this (and with other delays actually)
 }
 
 void cmos_selreg(Bitu port,Bitu val,Bitu iolen) {
@@ -278,7 +282,7 @@ static Bitu cmos_readreg(Bitu port,Bitu iolen) {
 
 void CMOS_SetRegister(Bitu regNr, Bit8u val) {
 	cmos.regs[regNr] = val;
-};
+}
 
 
 class CMOS:public Module_base{

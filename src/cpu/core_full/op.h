@@ -459,7 +459,6 @@ switch (inst.code.op) {
 		break;
 	case O_LAR:
 		{
-			if ((reg_flags & FLAG_VM) || (!cpu.pmode)) goto illegalopcode;
 			Bitu ar=inst_op2_d;
 			CPU_LAR(inst_op1_w,ar);
 			inst_op1_d=(Bit32u)ar;
@@ -467,7 +466,6 @@ switch (inst.code.op) {
 		break;
 	case O_LSL:
 		{
-			if ((reg_flags & FLAG_VM) || (!cpu.pmode)) goto illegalopcode;
 			Bitu limit=inst_op2_d;
 			CPU_LSL(inst_op1_w,limit);
 			inst_op1_d=(Bit32u)limit;
@@ -475,7 +473,6 @@ switch (inst.code.op) {
 		break;
 	case O_ARPL:
 		{
-			if ((reg_flags & FLAG_VM) || !cpu.pmode) goto illegalopcode;
 			Bitu new_sel=inst_op1_d;
 			CPU_ARPL(new_sel,inst_op2_d);
 			inst_op1_d=(Bit32u)new_sel;
@@ -588,7 +585,21 @@ switch (inst.code.op) {
 		inst_op1_d&=~(1 << (inst_op2_d & 31));
 		break;
 	case O_BSWAP:
+		if (CPU_ArchitectureType<CPU_ARCHTYPE_486OLDSLOW) goto illegalopcode;
 		BSWAP(inst_op1_d);
+		break;
+	case O_CMPXCHG:
+		if (CPU_ArchitectureType<CPU_ARCHTYPE_486NEWSLOW) goto illegalopcode;
+		FillFlags();
+		if (inst_op1_d==reg_eax) {
+			inst_op1_d=reg_32(inst.rm_index);
+			if (inst.rm<0xc0) SaveMd(inst.rm_eaa,inst_op1_d);	// early write-pf
+			SETFLAGBIT(ZF,1);
+		} else {
+			if (inst.rm<0xc0) SaveMd(inst.rm_eaa,inst_op1_d);	// early write-pf
+			reg_eax=inst_op1_d;
+			SETFLAGBIT(ZF,0);
+		}
 		break;
 	case O_FPU:
 #if C_FPU

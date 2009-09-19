@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -57,7 +57,7 @@ bool CDROM_Interface_Ioctl::ReadSectors(PhysPt buffer, bool raw, unsigned long s
 	int cdrom_fd = open(device_name, O_RDONLY | O_NONBLOCK);
 	if (cdrom_fd <= 0) return false;
 	
-	Bitu buflen = raw ? num * CD_FRAMESIZE_RAW : num * CD_FRAMESIZE;
+	Bits buflen = raw ? num * CD_FRAMESIZE_RAW : num * CD_FRAMESIZE;
 	Bit8u* buf = new Bit8u[buflen];	
 	int ret;
 	

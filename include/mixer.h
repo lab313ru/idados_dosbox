@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: mixer.h,v 1.19 2009-04-28 21:48:24 harekiet Exp $ */
 
 #ifndef DOSBOX_MIXER_H
 #define DOSBOX_MIXER_H
@@ -33,7 +35,7 @@ enum BlahModes {
 
 enum MixerModes {
 	M_8M,M_8S,
-	M_16M,M_16S,
+	M_16M,M_16S
 };
 
 #define MIXER_BUFSIZE (16*1024)
@@ -46,25 +48,38 @@ extern Bit8u MixTemp[MIXER_BUFSIZE];
 class MixerChannel {
 public:
 	void SetVolume(float _left,float _right);
+	void SetScale( float f );
 	void UpdateVolume(void);
 	void SetFreq(Bitu _freq);
 	void Mix(Bitu _needed);
 	void AddSilence(void);			//Fill up until needed
-	template<bool _8bit,bool stereo,bool signeddata>
-	void AddSamples(Bitu len,void * data);
-	void AddSamples_m8(Bitu len,Bit8u * data);
-	void AddSamples_s8(Bitu len,Bit8u * data);
-	void AddSamples_m8s(Bitu len,Bit8s * data);
-	void AddSamples_s8s(Bitu len,Bit8s * data);
-	void AddSamples_m16(Bitu len,Bit16s * data);
-	void AddSamples_s16(Bitu len,Bit16s * data);
-	void AddSamples_m16u(Bitu len,Bit16u * data);
-	void AddSamples_s16u(Bitu len,Bit16u * data);
+
+	template<class Type,bool stereo,bool signeddata,bool nativeorder>
+	void AddSamples(Bitu len, const Type* data);
+
+	void AddSamples_m8(Bitu len, const Bit8u * data);
+	void AddSamples_s8(Bitu len, const Bit8u * data);
+	void AddSamples_m8s(Bitu len, const Bit8s * data);
+	void AddSamples_s8s(Bitu len, const Bit8s * data);
+	void AddSamples_m16(Bitu len, const Bit16s * data);
+	void AddSamples_s16(Bitu len, const Bit16s * data);
+	void AddSamples_m16u(Bitu len, const Bit16u * data);
+	void AddSamples_s16u(Bitu len, const Bit16u * data);
+	void AddSamples_m32(Bitu len, const Bit32s * data);
+	void AddSamples_s32(Bitu len, const Bit32s * data);
+	void AddSamples_m16_nonnative(Bitu len, const Bit16s * data);
+	void AddSamples_s16_nonnative(Bitu len, const Bit16s * data);
+	void AddSamples_m16u_nonnative(Bitu len, const Bit16u * data);
+	void AddSamples_s16u_nonnative(Bitu len, const Bit16u * data);
+	void AddSamples_m32_nonnative(Bitu len, const Bit32s * data);
+	void AddSamples_s32_nonnative(Bitu len, const Bit32s * data);
+
 	void AddStretched(Bitu len,Bit16s * data);		//Strech block up into needed data
 	void FillUp(void);
 	void Enable(bool _yesno);
 	MIXER_Handler handler;
 	float volmain[2];
+	float scale;
 	Bit32s volmul[2];
 	Bitu freq_add,freq_index;
 	Bitu done,needed;

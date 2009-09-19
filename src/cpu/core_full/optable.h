@@ -69,7 +69,7 @@ static OpCode OpCodeTable[1024]={
 
 /* 0x60 - 0x67 */
 {D_PUSHAw	,0			,0		,0		},{D_POPAw	,0			,0		,0		},
-{L_MODRM	,O_BOUNDw	,0		,M_Gw	},{L_MODRM	,O_ARPL		,S_Ew	,M_EwGw	},
+{L_MODRM	,O_BOUNDw	,0		,M_Gw	},{L_MODRM_NVM	,O_ARPL		,S_Ew	,M_EwGw	},
 {L_PRESEG	,0			,0		,fs		},{L_PRESEG	,0			,0		,gs		},
 {L_PREOP	,0			,0		,0		},{L_PREADD	,0			,0		,0		},
 /* 0x68 - 0x6f */
@@ -183,7 +183,7 @@ static OpCode OpCodeTable[1024]={
 
 /* 0x100 - 0x107 */
 {L_MODRM	,O_GRP6w	,S_Ew	,M_Ew	},{L_MODRM	,O_GRP7w	,S_Ew	,M_Ew	},
-{L_MODRM	,O_LAR		,S_Gw	,M_EwGw	},{L_MODRM	,O_LSL		,S_Gw	,M_EwGw	},
+{L_MODRM_NVM	,O_LAR		,S_Gw	,M_EwGw	},{L_MODRM_NVM	,O_LSL		,S_Gw	,M_EwGw	},
 {0			,0			,0		,0		},{0		,0			,0		,0		},
 {D_CLTS		,0			,0		,0		},{0		,0			,0		,0		},
 /* 0x108 - 0x10f */
@@ -528,7 +528,7 @@ static OpCode OpCodeTable[1024]={
 /* 0x2f0 - 0x2f7 */
 {D_LOCK		,0			,0		,0		},{D_ICEBP	,0			,0		,0		},
 {L_PREREPNE	,0			,0		,0		},{L_PREREP	,0			,0		,0		},
-{0			,0			,0		,0		},{D_CMC	,0			,0		,0		},
+{D_HLT		,0			,0		,0		},{D_CMC	,0			,0		,0		},
 {L_MODRM	,8			,0		,M_GRP	},{L_MODRM	,0xa		,0		,M_GRP	},
 /* 0x2f8 - 0x2ff */
 {D_CLC		,0			,0		,0		},{D_STC	,0			,0		,0		},
@@ -539,7 +539,7 @@ static OpCode OpCodeTable[1024]={
 
 /* 0x300 - 0x307 */
 {L_MODRM	,O_GRP6d	,S_Ew	,M_Ew	},{L_MODRM	,O_GRP7d	,S_Ew	,M_Ew	},
-{L_MODRM	,O_LAR		,S_Gd	,M_EdGd	},{L_MODRM	,O_LSL		,S_Gd	,M_EdGd	},
+{L_MODRM_NVM	,O_LAR		,S_Gd	,M_EdGd	},{L_MODRM_NVM	,O_LSL		,S_Gd	,M_EdGd	},
 {0			,0			,0		,0		},{0		,0			,0		,0		},
 {D_CLTS		,0			,0		,0		},{0		,0			,0		,0		},
 /* 0x308 - 0x30f */
@@ -661,7 +661,7 @@ static OpCode OpCodeTable[1024]={
 {0			,0			,0		,0		},{L_MODRM	,O_IMULRd	,S_Gd	,M_EdxGdx	},
 
 /* 0x3b0 - 0x3b7 */
-{0			,0			,0		,0		},{0		,0			,0		,0		},
+{0			,0			,0		,0		},{L_MODRM	,O_CMPXCHG	,S_Ed	,M_Ed	},
 {L_MODRM	,O_SEGSS	,S_SEGGd,M_Efd	},{L_MODRM	,O_BTRd		,S_Ed	,M_EdGdt	},
 {L_MODRM	,O_SEGFS	,S_SEGGd,M_Efd	},{L_MODRM	,O_SEGGS	,S_SEGGd,M_Efd	},
 {L_MODRM	,0			,S_Gd	,M_Eb	},{L_MODRM	,0			,S_Gd	,M_Ew	},

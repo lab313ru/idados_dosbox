@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: cpu.h,v 1.57 2009-05-27 09:15:40 qbix79 Exp $ */
 
 #ifndef DOSBOX_CPU_H
 #define DOSBOX_CPU_H
@@ -36,6 +38,16 @@
 #define CPU_AUTODETERMINE_SHIFT		0x02
 #define CPU_AUTODETERMINE_MASK		0x03
 
+#define CPU_CYCLES_LOWER_LIMIT		100
+
+
+#define CPU_ARCHTYPE_MIXED			0xff
+#define CPU_ARCHTYPE_386SLOW		0x30
+#define CPU_ARCHTYPE_386FAST		0x35
+#define CPU_ARCHTYPE_486OLDSLOW		0x40
+#define CPU_ARCHTYPE_486NEWSLOW		0x45
+#define CPU_ARCHTYPE_PENTIUMSLOW	0x50
+
 /* CPU Cycle Timing */
 extern Bit32s CPU_Cycles;
 extern Bit32s CPU_CycleLeft;
@@ -45,7 +57,12 @@ extern Bit32s CPU_CyclePercUsed;
 extern Bit32s CPU_CycleLimit;
 extern Bit64s CPU_IODelayRemoved;
 extern bool CPU_CycleAutoAdjust;
+extern bool CPU_SkipCycleAutoAdjust;
 extern Bitu CPU_AutoDetermineMode;
+
+extern Bitu CPU_ArchitectureType;
+
+extern Bitu CPU_PrefetchQueueSize;
 
 /* Some common Defines */
 /* A CPU Handler */
@@ -60,6 +77,13 @@ Bits CPU_Core_Dyn_X86_Run(void);
 Bits CPU_Core_Dyn_X86_Trap_Run(void);
 Bits CPU_Core_Dynrec_Run(void);
 Bits CPU_Core_Dynrec_Trap_Run(void);
+Bits CPU_Core_Prefetch_Run(void);
+Bits CPU_Core_Prefetch_Trap_Run(void);
+
+void CPU_Enable_SkipAutoAdjust(void);
+void CPU_Disable_SkipAutoAdjust(void);
+void CPU_Reset_AutoAdjust(void);
+
 
 //CPU Stuff
 
@@ -120,13 +144,13 @@ void CPU_ENTER(bool use32,Bitu bytes,Bitu level);
 #define CPU_INT_NOIOPLCHECK		0x8
 
 void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip);
-INLINE void CPU_HW_Interrupt(Bitu num) {
+static INLINE void CPU_HW_Interrupt(Bitu num) {
 	CPU_Interrupt(num,0,reg_eip);
 }
-INLINE void CPU_SW_Interrupt(Bitu num,Bitu oldeip) {
+static INLINE void CPU_SW_Interrupt(Bitu num,Bitu oldeip) {
 	CPU_Interrupt(num,CPU_INT_SOFTWARE,oldeip);
 }
-INLINE void CPU_SW_Interrupt_NoIOPLCheck(Bitu num,Bitu oldeip) {
+static INLINE void CPU_SW_Interrupt_NoIOPLCheck(Bitu num,Bitu oldeip) {
 	CPU_Interrupt(num,CPU_INT_SOFTWARE|CPU_INT_NOIOPLCHECK,oldeip);
 }
 
@@ -136,7 +160,7 @@ void CPU_Exception(Bitu which,Bitu error=0);
 bool CPU_SetSegGeneral(SegNames seg,Bitu value);
 bool CPU_PopSeg(SegNames seg,bool use32);
 
-void CPU_CPUID(void);
+bool CPU_CPUID(void);
 Bitu CPU_Pop16(void);
 Bitu CPU_Pop32(void);
 void CPU_Push16(Bitu value);
@@ -150,6 +174,7 @@ void CPU_SetFlags(Bitu word,Bitu mask);
 #define EXCEPTION_NP			11
 #define EXCEPTION_SS			12
 #define EXCEPTION_GP			13
+#define EXCEPTION_PF			14
 
 #define CR0_PROTECTION			0x00000001
 #define CR0_MONITORPROCESSOR	0x00000002
@@ -303,16 +328,9 @@ class Descriptor
 public:
 	Descriptor() { saved.fill[0]=saved.fill[1]=0; }
 
-	void Load(PhysPt address) {
-		Bit32u* data = (Bit32u*)&saved;
-		*data	  = mem_readd(address);
-		*(data+1) = mem_readd(address+4);
-	}
-	void Save(PhysPt address) {
-		Bit32u* data = (Bit32u*)&saved;
-		mem_writed(address,*data);
-		mem_writed(address+4,*(data+1));
-	}
+	void Load(PhysPt address);
+	void Save(PhysPt address);
+
 	PhysPt GetBase (void) { 
 		return (saved.seg.base_24_31<<24) | (saved.seg.base_16_23<<16) | saved.seg.base_0_15; 
 	}
@@ -433,6 +451,7 @@ public:
 
 struct CPUBlock {
 	Bitu cpl;							/* Current Privilege */
+	Bitu mpl;
 	Bitu cr0;
 	bool pmode;							/* Is Protected mode enabled */
 	GDTDescriptorTable gdt;
@@ -459,15 +478,15 @@ struct CPUBlock {
 
 extern CPUBlock cpu;
 
-INLINE void CPU_SetFlagsd(Bitu word) {
+static INLINE void CPU_SetFlagsd(Bitu word) {
 	Bitu mask=cpu.cpl ? FMASK_NORMAL : FMASK_ALL;
 	CPU_SetFlags(word,mask);
-};
+}
 
-INLINE void CPU_SetFlagsw(Bitu word) {
+static INLINE void CPU_SetFlagsw(Bitu word) {
 	Bitu mask=(cpu.cpl ? FMASK_NORMAL : FMASK_ALL) & 0xffff;
 	CPU_SetFlags(word,mask);
-};
+}
 
 
 #endif

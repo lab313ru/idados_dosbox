@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2007  The DOSBox Team
+ *  Copyright (C) 2002-2009  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
+
+/* $Id: risc_x86.h,v 1.32 2009-05-27 09:15:41 qbix79 Exp $ */
 
 static void gen_init(void);
 
@@ -266,6 +268,18 @@ static void gen_needcarry(void) {
 		cache_addb(0x24);
 		cache_addd(0x0424648d);		//LEA ESP,[ESP+4]
 	}
+}
+
+static void gen_setzeroflag(void) {
+	if (x86gen.flagsactive) IllegalOption("gen_setzeroflag");
+	cache_addw(0x0c83);			//OR DWORD [ESP],0x40
+	cache_addw(0x4024);
+}
+
+static void gen_clearzeroflag(void) {
+	if (x86gen.flagsactive) IllegalOption("gen_clearzeroflag");
+	cache_addw(0x2483);			//AND DWORD [ESP],~0x40
+	cache_addw(0xbf24);
 }
 
 static bool skip_flags=false;
@@ -738,8 +752,10 @@ static void gen_call_function(void * func,char const* ops,...) {
 	if (ops) {
 		va_list params;
 		va_start(params,ops);
+#if defined (MACOSX)
 		Bitu stack_used=0;
 		bool free_flags=false;
+#endif
 		Bits pindex=0;
 		while (*ops) {
 			if (*ops=='%') {
@@ -925,9 +941,9 @@ static void gen_call_write(DynReg * dr,Bit32u val,Bitu write_size) {
 	/* Do the actual call to the procedure */
 	cache_addb(0xe8);
 	switch (write_size) {
-		case 1: cache_addd((Bit32u)mem_writeb_checked_x86 - (Bit32u)cache.pos-4); break;
-		case 2: cache_addd((Bit32u)mem_writew_checked_x86 - (Bit32u)cache.pos-4); break;
-		case 4: cache_addd((Bit32u)mem_writed_checked_x86 - (Bit32u)cache.pos-4); break;
+		case 1: cache_addd((Bit32u)mem_writeb_checked - (Bit32u)cache.pos-4); break;
+		case 2: cache_addd((Bit32u)mem_writew_checked - (Bit32u)cache.pos-4); break;
+		case 4: cache_addd((Bit32u)mem_writed_checked - (Bit32u)cache.pos-4); break;
 		default: IllegalOption("gen_call_write");
 	}
 
