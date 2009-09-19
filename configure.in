@@ -186,12 +186,14 @@ fi
 AC_C_BIGENDIAN
 
 AC_ARG_WITH(ida_sdk,AC_HELP_STRING([--with-ida-sdk=path],[Path of IDA SDK]))
+AC_ARG_WITH(ida_plugin,AC_HELP_STRING([--with-ida-plugin=path],[Path of IDA/dosbox plugin]))
 
 #Features to enable/disable
 AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses])
 AH_TEMPLATE(C_HEAVY_DEBUG,[Define to 1 to enable heavy debugging, also have to enable C_DEBUG])
 AH_TEMPLATE(C_IDA_DEBUG,[Define to 1 to enable remote IDA debugger])
 AH_TEMPLATE(C_IDA_64BIT,[Define to 1 to enable 64bit IDA support])
+ida=no
 AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
    AC_CHECK_HEADER(curses.h,have_curses_h=yes,)
    AC_CHECK_LIB(curses, initscr, have_curses_lib=yes, , )
@@ -211,14 +213,14 @@ AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,0)
        AC_DEFINE(C_HEAVY_DEBUG,1)
-       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
+       ida=yes
      elif test x$enable_debug = xida64; then
        AC_MSG_RESULT([Building remote debugger (64 bit)])
        AC_DEFINE(C_DEBUG,1)
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,1)
        AC_DEFINE(C_HEAVY_DEBUG,1)
-       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
+       ida=yes
      fi
    elif test x$have_ncurses_lib = xyes -a x$have_curses_h = xyes ; then
      LIBS="$LIBS -lncurses"
@@ -237,22 +239,39 @@ AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,0)
        AC_DEFINE(C_HEAVY_DEBUG,1)
-       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
+       ida=yes
      elif test x$enable_debug = xida64; then
        AC_MSG_RESULT([Building remote debugger (64 bit)])
        AC_DEFINE(C_DEBUG,1)
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,1)
        AC_DEFINE(C_HEAVY_DEBUG,1)
-       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
+       ida=yes
      fi
    else 
      AC_MSG_ERROR([Can't find curses, which is required for debug mode])
    fi
 ],)
 
-IDA_SDK="$with_ida_sdk"
-AC_SUBST(IDA_SDK)
+if test x$ida = xyes; then
+  AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
+  IDA_SDK="$with_ida_sdk"
+  AC_SUBST(IDA_SDK)
+
+  if test x$with_ida_plugin != x; then
+    ida_plugin=$with_ida_plugin
+    AC_CHECK_FILE($ida_plugin/dosbox_debmod.cpp,,AC_MSG_ERROR([IDA plugin not found. Check --with-ida-plugin.]))
+  else
+    ida_plugin_found=yes
+    AC_CHECK_FILE($with_ida_sdk/plugins/debugger/dosbox_debmod.cpp,ida_plugin=$ida_plugin/plugins/debugger,ida_plugin_found=no)
+    if test x$ida_plugin_found = xno; then
+      AC_CHECK_FILE(ida/dosbox_debmod.cpp,ida_plugin=../../ida,AC_MSG_ERROR([IDA plugin not found. Use --with-ida-plugin.]))
+    fi
+  fi
+  IDA_PLUGIN=$ida_plugin
+  AC_SUBST(IDA_PLUGIN)
+fi
+
 
 AH_TEMPLATE(C_CORE_INLINE,[Define to 1 to use inlined memory functions in cpu core])
 AC_ARG_ENABLE(core-inline,AC_HELP_STRING([--enable-core-inline],[Enable inlined memory handling in CPU Core]),[
