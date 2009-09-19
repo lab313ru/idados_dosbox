@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string>
 
 #define USE_DANGEROUS_FUNCTIONS
 #include "pro.h"
@@ -68,12 +69,54 @@ idaman int ida_export qsnprintf(char *buffer, size_t n, const char *format, ...)
   int ret;
   va_list va;
 
-  va_start(va, format);
-  ret = vsnprintf(buffer, n, format, va);
-  va_end(va);
+  std::string f;
+  const char *ptr;
+  for (ptr = format; *ptr; ++ptr) {
+    if (*ptr != '%') {
+      f += *ptr;
+      continue;
+    }
 
-  if(ret > 0) //IDA returns the amount written excluding the terminating '\0'
-   ret--;
+    // Scan forward to see if this is an 'a' format specifier.
+    // We support zero padding and field width modifiers, but nothing else.
+    const char *ptr2 = ptr+1;
+    while (*ptr2 >= '0' && *ptr2 <= '9')
+      ++ptr2;
+
+    if (*ptr2 == 'a') {
+      // found a '%a'
+
+      bool zero_padding = (ptr[1] == '0');
+      int width = -1;
+      if (ptr[1] >= '0' && ptr[1] <= '9') {
+        width = atoi(ptr+1);
+#if C_IDA_64BIT
+        width *= 2;
+#endif
+      }
+      f += '%';
+      if (zero_padding) f += '0';
+      if (width > 0) {
+        char buf[32];
+        sprintf(buf, "%d", width);
+        f += buf;
+      }
+      f += FMT_EA;
+      f += 'x';
+      ptr = ptr2;
+    } else {
+
+      if (ptr[1] == '%') {
+        f += "%";
+        ++ptr;
+      }
+      f += *ptr;
+    }
+  }
+
+  va_start(va, format);
+  ret = vsnprintf(buffer, n, f.c_str(), va);
+  va_end(va);
 
   return ret;
 }
