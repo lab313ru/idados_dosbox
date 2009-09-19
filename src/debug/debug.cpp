@@ -165,8 +165,6 @@ static bool		showExtend = true;
 
 Bit32u GetAddress(Bit16u seg, Bit32u offset);
 
-//#include "debug_remote_inc.h"
-
 /***********/
 /* Helpers */
 /***********/
