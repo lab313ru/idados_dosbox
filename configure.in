@@ -145,6 +145,8 @@ fi
 #Check for big endian machine, should #define WORDS_BIGENDIAN if so
 AC_C_BIGENDIAN
 
+AC_ARG_WITH(ida_sdk,AC_HELP_STRING([--with-ida-sdk=path],[Path of IDA SDK]))
+
 #Features to enable/disable
 AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses])
 AH_TEMPLATE(C_HEAVY_DEBUG,[Define to 1 to enable heavy debugging, also have to enable C_DEBUG])
@@ -162,53 +164,48 @@ AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
      AC_DEFINE(C_DEBUG,1)
      if test x$enable_debug = xheavy ; then 
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida; then
+     elif test x$enable_debug = xida -o x$enable_debug = xida32; then
        AC_MSG_RESULT([Building remote debugger (32 bit)])
        AC_DEFINE(C_DEBUG,1)
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,0)
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida32; then
-       AC_MSG_RESULT([Building remote debugger (32 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,0)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
+       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
      elif test x$enable_debug = xida64; then
        AC_MSG_RESULT([Building remote debugger (64 bit)])
        AC_DEFINE(C_DEBUG,1)
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,1)
        AC_DEFINE(C_HEAVY_DEBUG,1)
+       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
      fi
    elif test x$have_pdcurses_lib = xyes -a x$have_curses_h = xyes ; then
      LIBS="$LIBS -lpdcurses"
      AC_DEFINE(C_DEBUG,1)
      if test x$enable_debug = xheavy ; then 
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida; then
+     elif test x$enable_debug = xida -o x$enable_debug = xida32; then
        AC_MSG_RESULT([Building remote debugger (32 bit)])
        AC_DEFINE(C_DEBUG,1)
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,0)
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida32; then
-       AC_MSG_RESULT([Building remote debugger (32 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,0)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
+       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
      elif test x$enable_debug = xida64; then
        AC_MSG_RESULT([Building remote debugger (64 bit)])
        AC_DEFINE(C_DEBUG,1)
        AC_DEFINE(C_IDA_DEBUG,1)
        AC_DEFINE(C_IDA_64BIT,1)
        AC_DEFINE(C_HEAVY_DEBUG,1)
+       AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
      fi
    else 
      AC_MSG_WARN([Can't find curses, debug mode disabled])
    fi
 ],)
+
+IDA_SDK="$with_ida_sdk"
+AC_SUBST(IDA_SDK)
 
 AH_TEMPLATE(C_CORE_INLINE,[Define to 1 to use inlined memory functions in cpu core])
 AC_ARG_ENABLE(core-inline,AC_HELP_STRING([--enable-core-inline],[Enable inlined memory handling in CPU Core]),[
@@ -430,7 +427,7 @@ dnl Some target detection and actions for them
 case "$target" in
     *-*-cygwin* | *-*-mingw32*)
        LIBS="$LIBS -lwinmm"
-       if test x$enable_debug = xida; then
+       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
          CPPFLAGS="$CPPFLAGS -D__NT__"
          LIBS="$LIBS -lwsock32"
        fi
@@ -452,7 +449,10 @@ case "$target" in
     *-*-linux*)
        AC_DEFINE(LINUX, 1, [Compiling on GNU/Linux])
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).])
-       ;;
+       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
+         CPPFLAGS="$CPPFLAGS -D__LINUX__"
+       fi
+        ;;
     *-*-freebsd* | *-*-dragonfly* | *-*-netbsd* | *-*-openbsd*)
        dnl Disabled directserial for now. It doesn't do anything without
        dnl specifying an extra ifdef in directserial_posix.*
