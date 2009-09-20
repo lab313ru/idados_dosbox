@@ -69,6 +69,13 @@ idaman int ida_export qsnprintf(char *buffer, size_t n, const char *format, ...)
   int ret;
   va_list va;
 
+  if (n == 0)
+    return 0;
+  if (n == 1) {
+    buffer[0] = 0;
+    return 0;
+  }
+
   std::string f;
   const char *ptr;
   for (ptr = format; *ptr; ++ptr) {
@@ -117,6 +124,11 @@ idaman int ida_export qsnprintf(char *buffer, size_t n, const char *format, ...)
   va_start(va, format);
   ret = vsnprintf(buffer, n, f.c_str(), va);
   va_end(va);
+
+  // "These function return the number of characters _actually written_
+  // to the output string excluding the terminating zero."
+  if (ret >= n)
+    ret = n-1;
 
   return ret;
 }
