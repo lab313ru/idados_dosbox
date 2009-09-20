@@ -645,10 +645,10 @@ bool DEBUG_IntBreakpoint(Bit8u intNum)
 	if (!CBreakpoint::CheckIntBreakpoint(where,intNum,reg_ah)) return false;
 	// Found. Breakpoint is valid
 	CBreakpoint::ActivateBreakpoints(where,false);	// Deactivate all breakpoints
-    
-        //ERIC
-    idados_hit_breakpoint(where);
-    
+
+	//ERIC
+	idados_hit_breakpoint(where);
+
 	return true;
 };
 
@@ -1652,7 +1652,7 @@ Bit32u DEBUG_CheckKeys(void) {
 				break;
 
 		}
-                if (ret<0) return ret;
+		if (ret<0) return ret;
 		if (ret>0) {
 			ret=(*CallBack_Handlers[ret])();
 			if (ret) {
@@ -1687,24 +1687,24 @@ Bitu DEBUG_Loop(void) {
 		return 0;
 	}
 
-  Bits ret;
+	Bits ret;
 
-  //idados ret = DEBUG_RemoteHandleCMD();
-  ret = idados_handle_command();
+	//idados ret = DEBUG_RemoteHandleCMD();
+	ret = idados_handle_command();
 
-  if (ret<0) return ret;
-		if (ret>0){
-  printf("CS:IP = %x\n", GetAddress(SegValue(cs), (unsigned long)reg_eip));
-			ret=(*CallBack_Handlers[ret])();
-			if (ret) {
-				exitLoop=true;
-				CPU_Cycles=CPU_CycleLeft=0;
-				return ret;
-			}
-      }
+	if (ret<0) return ret;
+	if (ret>0){
+		printf("CS:IP = %x\n", GetAddress(SegValue(cs), (unsigned long)reg_eip));
+		ret=(*CallBack_Handlers[ret])();
+		if (ret) {
+			exitLoop=true;
+			CPU_Cycles=CPU_CycleLeft=0;
+			return ret;
+		}
+	}
 
-  if(idados_is_running())
-    DEBUG_Continue();
+	if(idados_is_running())
+		DEBUG_Continue();
 
 	return 0; //ERIC DEBUG_CheckKeys();
 }
@@ -1889,7 +1889,7 @@ static void LogInstruction(Bit16u segValue, Bit32u eipValue,  ofstream& out) {
 		if (len<21) { for (Bitu i=0; i<21-len; i++) ibytes[len + i] =' '; ibytes[21]=0;} //NOTE THE BRACKETS
 		out << setw(4) << SegValue(cs) << ":" << setw(8) << reg_eip << "  " << dline << "  " << res << "  " << ibytes;
 	}
-   
+
 	out << " EAX:" << setw(8) << reg_eax << " EBX:" << setw(8) << reg_ebx 
 	    << " ECX:" << setw(8) << reg_ecx << " EDX:" << setw(8) << reg_edx
 	    << " ESI:" << setw(8) << reg_esi << " EDI:" << setw(8) << reg_edi 
@@ -1968,7 +1968,7 @@ public:
 		SegSet16(cs,oldcs);
 		reg_eip = oldeip;
 	};
-  
+
 private:
 	bool	active;
 };
@@ -2023,9 +2023,9 @@ static void DEBUG_ShutDown(Section * /*sec*/) {
 //ERIC	printf("\ec");
 	fflush(NULL);
 	#endif
-    
-    //DEBUG_RemoteClose(); //ERIC
-    idados_term();
+
+	//DEBUG_RemoteClose(); //ERIC
+	idados_term();
 }
 
 Bitu debugCallback;
@@ -2045,11 +2045,11 @@ void DEBUG_Init(Section* sec) {
 	CALLBACK_Setup(debugCallback,DEBUG_EnableDebugger,CB_RETF,"debugger");
 	/* shutdown function */
 	sec->AddDestroyFunction(&DEBUG_ShutDown);
-    
-        
-    /*remote init ERIC*/
-    //DEBUG_RemoteInit();
-    idados_init();
+
+
+	/*remote init ERIC*/
+	//DEBUG_RemoteInit();
+	idados_init();
 }
 
 // DEBUGGING VAR STUFF
@@ -2400,74 +2400,75 @@ bool DEBUG_HeavyIsBreakpoint(void) {
 
 bool DEBUG_AddBreakPoint(Bit32u address, bool once)
 {
-  CBreakpoint::AddBreakpoint((Bit16u)(address / 0x10), (Bit32u)address % 0x10, once);
-  
-  return true;
+	CBreakpoint::AddBreakpoint((Bit16u)(address / 0x10), (Bit32u)address % 0x10, once);
+
+	return true;
 }
 
 bool DEBUG_AddMemBreakPoint(Bit32u address)
 {
-  CBreakpoint::AddMemBreakpoint((Bit16u)(address / 0x10), (Bit32u)address % 0x10);
-  
-  return true;
+	CBreakpoint::AddMemBreakpoint((Bit16u)(address / 0x10), (Bit32u)address % 0x10);
+
+	return true;
 }
 
 bool DEBUG_DelBreakPoint(PhysPt address)
 {
-  printf("delete breakpoint at %x\n", address);
-  CBreakpoint::DeleteBreakpoint(address);
-  
-  return true;
+	printf("delete breakpoint at %x\n", address);
+	CBreakpoint::DeleteBreakpoint(address);
+
+	return true;
 }
 
 Bits DEBUG_RemoteStep(void)
 {
-  Bits ret;
+	Bits ret;
 
 	//idados r_debug.app_continue = false;
-  idados_stopped();
- 
+	idados_stopped();
+
 	exitLoop = false;
 	skipFirstInstruction = true; // for heavy debugger
-  CPU_Cycles = 1;
-  ret = (*cpudecoder)();
-  //SetCodeWinStart();
-  CBreakpoint::ignoreOnce = 0;
- 
-  printf("Stepping. New CS:IP = %x\n", GetAddress(SegValue(cs), (unsigned long)reg_eip));
-  return ret;
+	CPU_Cycles = 1;
+	ret = (*cpudecoder)();
+	//SetCodeWinStart();
+	CBreakpoint::ignoreOnce = 0;
+
+	printf("Stepping. New CS:IP = %x\n", GetAddress(SegValue(cs), (unsigned long)reg_eip));
+	return ret;
 }
 
 int DEBUG_Continue(void)
 {
 	printf("DEBUG_Continue()\n");
-    // Run Programm
-    debugging=false;
-    CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);						
-    ignoreAddressOnce = SegPhys(cs)+reg_eip;
-    DOSBOX_SetNormalLoop();
-    
-    return 1;
+	// Run Programm
+	debugging=false;
+	CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);
+
+	ignoreAddressOnce = SegPhys(cs)+reg_eip;
+	DOSBOX_SetNormalLoop();
+
+	return 1;
 }
 
 int DEBUG_ContinueWithoutDebug()
 {
-  CBreakpoint::DeleteAll();
+	CBreakpoint::DeleteAll();
 	CDebugVar::DeleteAll();
-  debugging = false;
-  DOSBOX_SetNormalLoop();
-  
-  return 1;
+	debugging = false;
+	DOSBOX_SetNormalLoop();
+
+	return 1;
 }
 
 string DEBUG_GetFileName()
 {
-  return debug_filename;
+	return debug_filename;
 }
 
 void DEBUG_AppTerminated()
 {
- //idados remote_process_terminated();
+	//idados remote_process_terminated();
 }
 
 #endif // DEBUG
