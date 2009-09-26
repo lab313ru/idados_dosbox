@@ -39,7 +39,7 @@
 
 #  include <sys/socket.h>
 #  include <netinet/in.h>
-#  define SOCKET int
+#  define SOCKET intptr_t
 #  define INVALID_SOCKET (-1)
 #  define SOCKET_ERROR   (-1)
 #  define closesocket(s)           close(s)
