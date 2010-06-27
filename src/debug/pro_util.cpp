@@ -396,4 +396,7 @@ idaman void ida_export get_nsec_stamp(uint64 *nsecs)
   *nsecs = r;
 }
 
-
+idaman bool ida_export relocate_relobj(struct relobj_t *_relobj, ea_t ea, bool mf)
+{
+  assert(false);
+}
