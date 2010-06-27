@@ -186,6 +186,15 @@ idaman uchar    *ida_export pack_dd(uchar *ptr, uchar *end, uint32 x)
 }
 
 //-----------------------------------------------------------------------
+idaman uchar    *ida_export pack_dq(uchar *ptr, uchar *end, uint64 x)
+{
+  QBUFCHECK(ptr, end-ptr, NULL);
+  ptr = pack_dd(ptr, end, (uint32)x);
+  ptr = pack_dd(ptr, end, x >> 32);
+}
+
+
+//-----------------------------------------------------------------------
 idaman uint32    ida_export unpack_dd(const uchar **pptr, const uchar *end)
 {
   const uchar *ptr = *pptr;
@@ -220,6 +229,14 @@ idaman uint32    ida_export unpack_dd(const uchar **pptr, const uchar *end)
   }
   *pptr = ptr;
   return x;
+}
+
+//-----------------------------------------------------------------------
+idaman uint64    ida_export unpack_dq(const uchar **pptr, const uchar *end)
+{
+  uint32 l = unpack_dd(pptr, end);
+  uint32 h = unpack_dd(pptr, end);
+  return (((uint64)h)<<32) + l;
 }
 
 idaman FILE *ida_export qfopen(const char *file, const char *mode)
@@ -364,6 +381,19 @@ int idados_msg(const char *format, ...)
   va_end(va);
 
   return ret;
+}
+
+
+// TODO: port to different OSs
+#include <sys/time.h>
+idaman void ida_export get_nsec_stamp(uint64 *nsecs)
+{
+  if (!nsecs) return;
+  timeval t;
+  gettimeofday(&t, 0);
+  uint64 r = ((uint64)t.tv_sec) * 1000000000UL;
+  r += ((uint64)t.tv_usec) * 1000;
+  *nsecs = r;
 }
 
 
