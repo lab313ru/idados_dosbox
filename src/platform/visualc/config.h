@@ -1,4 +1,4 @@
-#define VERSION "0.73"
+#define VERSION "0.74"
 
 /* Define to 1 to enable internal debugger, requires libcurses */
 #define C_DEBUG 0
@@ -54,6 +54,7 @@
 
 #define GCC_ATTRIBUTE(x) /* attribute not supported */
 #define GCC_UNLIKELY(x) (x)
+#define GCC_LIKELY(x) (x)
 
 #define INLINE __forceinline
 #define DB_FASTCALL __fastcall

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -431,7 +431,7 @@ bool DOS_Shell::Execute(char * name,char * args) {
 		/* delete old batch file if call is not active*/
 		bool temp_echo=echo; /*keep the current echostate (as delete bf might change it )*/
 		if(bf && !call) delete bf;
-		bf=new BatchFile(this,fullname,line);
+		bf=new BatchFile(this,fullname,name,line);
 		echo=temp_echo; //restore it.
 	} 
 	else 

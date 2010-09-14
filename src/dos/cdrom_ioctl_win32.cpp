@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -430,6 +430,7 @@ bool CDROM_Interface_Ioctl::PauseAudio(bool resume) {
 		return false;
 	}
 	if (use_dxplay) {
+		if (!player.isPlaying) return false;
 		player.isPaused = !resume;
 		return true;
 	}

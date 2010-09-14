@@ -305,7 +305,7 @@ AC_SUBST(ALSA_LIBS)
 
 AH_TOP([
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -344,8 +344,10 @@ AH_BOTTOM([#if C_HAS_ATTRIBUTE
 
 AH_BOTTOM([#if C_HAS_BUILTIN_EXPECT
 #define GCC_UNLIKELY(x) __builtin_expect((x),0)
+#define GCC_LIKELY(x) __builtin_expect((x),1)
 #else
 #define GCC_UNLIKELY(x) (x)
+#define GCC_LIKELY(x) (x)
 #endif])
 
 AH_BOTTOM([
@@ -388,9 +390,9 @@ typedef         double     Real64;
 #if SIZEOF_INT_P == 4
   typedef Bit32u Bitu;
   typedef Bit32s Bits;
- #else
+#else
   typedef Bit64u Bitu;
   typedef Bit64s Bits;
- #endif
+#endif
 
 ])

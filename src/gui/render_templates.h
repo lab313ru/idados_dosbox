@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2009  The DOSBox Team
+ *  Copyright (C) 2002-2010  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -349,12 +349,12 @@ static void conc3d(Cache,SBPP,DBPP) (const void * s) {
 	line0[0]=P;							\
 	line0[1]=P & greenMask;				\
 	line0[2]=P & blueMask;				\
-	line1[0]=P & blueMask;				\
-	line1[1]=P;							\
-	line1[2]=P & redMask;				\
-	line2[0]=P & redMask;				\
-	line2[1]=P & greenMask;				\
-	line2[2]=P;
+	line1[0]=P & greenMask;				\
+	line1[1]=P & redMask; 						\
+	line1[2]=P;				\
+	line2[0]=P;				\
+	line2[1]=P & blueMask;				\
+	line2[2]=P & redMask;
 #include "render_simple.h"
 #undef SCALERNAME
 #undef SCALERWIDTH
