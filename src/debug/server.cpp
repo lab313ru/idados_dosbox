@@ -66,7 +66,6 @@ extern "C" const char *check_connection(int);
 #  define __SERVER_TYPE__ "MT"
 #endif
 
-#include "util.h"
 #include "debmod.h"
 #include "rpc_hlp.h"
 #include "rpc_server.h"
