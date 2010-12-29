@@ -2032,10 +2032,10 @@ public:
 
 		// Workaround : Allocate Stack Space
 		Bit16u segment;
-		Bit16u size = 0x200 / 0x10;
+		Bit16u size = 0x300 / 0x10;
 		if (DOS_AllocateMemory(&segment,&size)) {
 			SegSet16(ss,segment);
-			reg_sp = 0x200;
+			reg_sp = 0x300;
 			// Start shell
 			DOS_Shell shell;
 			shell.Execute(filename,args);
