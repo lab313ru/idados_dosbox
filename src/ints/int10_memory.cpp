@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10_memory.cpp,v 1.30 2009-09-06 19:25:34 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -50,7 +49,7 @@ void INT10_LoadFont(PhysPt font,bool reload,Bitu count,Bitu offset,Bitu map,Bitu
 	PhysPt ftwhere=PhysMake(0xa000,map_offset[map & 0x7]+(Bit16u)(offset*32));
 	IO_Write(0x3c4,0x2);IO_Write(0x3c5,0x4);	//Enable plane 2
 	IO_Write(0x3ce,0x6);Bitu old_6=IO_Read(0x3cf);
-	IO_Write(0x3cf,0x0);	//Disable odd/even and a0000 adressing
+	IO_Write(0x3cf,0x0);	//Disable odd/even and a0000 addressing
 	for (Bitu i=0;i<count;i++) {
 		MEM_BlockCopy(ftwhere,font,height);
 		ftwhere+=32;
@@ -58,7 +57,7 @@ void INT10_LoadFont(PhysPt font,bool reload,Bitu count,Bitu offset,Bitu map,Bitu
 	}
 	IO_Write(0x3c4,0x2);IO_Write(0x3c5,0x3);	//Enable textmode planes (0,1)
 	IO_Write(0x3ce,0x6);
-	if (IS_VGA_ARCH) IO_Write(0x3cf,(Bit8u)old_6);	//odd/even and b8000 adressing
+	if (IS_VGA_ARCH) IO_Write(0x3cf,(Bit8u)old_6);	//odd/even and b8000 addressing
 	else IO_Write(0x3cf,0x0e);
 	/* Reload tables and registers with new values based on this height */
 	if (reload) {
@@ -66,9 +65,21 @@ void INT10_LoadFont(PhysPt font,bool reload,Bitu count,Bitu offset,Bitu map,Bitu
 		Bit16u base=real_readw(BIOSMEM_SEG,BIOSMEM_CRTC_ADDRESS);
 		IO_Write(base,0x9);
 		IO_Write(base+1,(IO_Read(base+1) & 0xe0)|(height-1));
-		//Vertical display end bios says, but should stay the same?
+		// Vertical display end bios says, but should stay the same?
+		// Not on EGA.
+        Bitu rows = CurMode->sheight/height;
+		if (machine==MCH_EGA) {
+			Bitu displayend = rows*height - 1;
+			IO_Write(base,0x12);
+			IO_Write(base+1,(Bit8u)(displayend & 0xff));
+			IO_Write(base,0x7);
+			// Note: IBM EGA registers can't be read
+			Bitu v_overflow = IO_Read(base+1) & ~0x2;
+			if (displayend & 0x100) v_overflow |= 0x2;
+			IO_Write(base+1,(Bit8u)v_overflow);
+		}
 		//Rows setting in bios segment
-		real_writeb(BIOSMEM_SEG,BIOSMEM_NB_ROWS,(CurMode->sheight/height)-1);
+		real_writeb(BIOSMEM_SEG,BIOSMEM_NB_ROWS,rows-1);
 		real_writeb(BIOSMEM_SEG,BIOSMEM_CHAR_HEIGHT,(Bit8u)height);
 		//TODO Reprogram cursor size?
 	}
@@ -143,7 +154,7 @@ void INT10_SetupRomMemory(void) {
 			int10.rom.video_dcc_table=RealMake(0xC000,int10.rom.used);
 			phys_writeb(rom_base+int10.rom.used++,0x10);	// number of entries
 			phys_writeb(rom_base+int10.rom.used++,1);		// version number
-			phys_writeb(rom_base+int10.rom.used++,8);		// maximal display code
+			phys_writeb(rom_base+int10.rom.used++,8);		// maximum display code
 			phys_writeb(rom_base+int10.rom.used++,0);		// reserved
 			// display combination codes
 			phys_writew(rom_base+int10.rom.used,0x0000);	int10.rom.used+=2;

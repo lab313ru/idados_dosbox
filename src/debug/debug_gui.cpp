@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: debug_gui.cpp,v 1.38 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dosbox.h"
 
@@ -152,41 +151,42 @@ static void DrawBars(void) {
 		attrset(COLOR_PAIR(PAIR_BLACK_BLUE));
 	}
 	/* Show the Register bar */
-	mvaddstr(dbg.win_reg->_begy-1,0, "---(Register Overview                   )---");
+	mvaddstr(1-1,0, "---(Register Overview                   )---");
 	/* Show the Data Overview bar perhaps with more special stuff in the end */
-	mvaddstr(dbg.win_data->_begy-1,0,"---(Data Overview   Scroll: page up/down)---");
+	mvaddstr(6-1,0,"---(Data Overview   Scroll: page up/down)---");
 	/* Show the Code Overview perhaps with special stuff in bar too */
-	mvaddstr(dbg.win_code->_begy-1,0,"---(Code Overview   Scroll: up/down     )---");
+	mvaddstr(17-1,0,"---(Code Overview   Scroll: up/down     )---");
 	/* Show the Variable Overview bar */
-	mvaddstr(dbg.win_var->_begy-1,0, "---(Variable Overview                   )---");
+	mvaddstr(29-1,0, "---(Variable Overview                   )---");
 	/* Show the Output OverView */
-	mvaddstr(dbg.win_out->_begy-1,0, "---(OutPut/Input    Scroll: home/end    )---");
+	mvaddstr(34-1,0, "---(Output          Scroll: home/end    )---");
 	attrset(0);
+	//Match values with below. So we don't need to touch the internal window structures
 }
 
 
 
 static void MakeSubWindows(void) {
 /*ERIC
-	/ * The Std output win should go in bottem * /
-	/ * Make all the subwindows  * /
+	// The Std output win should go at the bottom
+	// Make all the subwindows
 	int win_main_maxy, win_main_maxx; getmaxyx(dbg.win_main,win_main_maxy,win_main_maxx);
-	int outy=1;
+	int outy=1; //Match values with above
 	/ * The Register window  * /
 	dbg.win_reg=subwin(dbg.win_main,4,win_main_maxx,outy,0);
-	outy+=5;
+	outy+=5; // 6
 	/ * The Data Window * /
 	dbg.win_data=subwin(dbg.win_main,10,win_main_maxx,outy,0);
-	outy+=11;
+	outy+=11; // 17
 	/ * The Code Window * /
 	dbg.win_code=subwin(dbg.win_main,11,win_main_maxx,outy,0);
-	outy+=12;
+	outy+=12; // 29
 	/ * The Variable Window * /
 	dbg.win_var=subwin(dbg.win_main,4,win_main_maxx,outy,0);
-	outy+=5;
+	outy+=5; // 34
 	/ * The Output Window * /	
-	dbg.win_out=subwin(dbg.win_main,win_main_maxy-outy-1,win_main_maxx,outy,0);
-	dbg.input_y=win_main_maxy-1;
+	dbg.win_out=subwin(dbg.win_main,win_main_maxy-outy,win_main_maxx,outy,0);
+//	dbg.input_y=win_main_maxy-1;
 	scrollok(dbg.win_out,TRUE);
 	DrawBars();
 	Draw_RegisterLayout();
@@ -253,6 +253,7 @@ void LOG_StartUp(void) {
 	loggrp[LOG_MISC].front="MISC";
 
 	loggrp[LOG_IO].front="IO";
+	loggrp[LOG_PCI].front="PCI";
 	
 	/* Register the log section */
 	Section_prop * sect=control->AddSection_prop("log",LOG_Init);
@@ -265,7 +266,7 @@ void LOG_StartUp(void) {
 		Prop_bool* Pbool = sect->Add_bool(buf,Property::Changeable::Always,true);
 		Pbool->Set_help("Enable/Disable logging of this type.");
 	}
-	MSG_Add("LOG_CONFIGFILE_HELP","Logging related options for the debugger.\n");
+//	MSG_Add("LOG_CONFIGFILE_HELP","Logging related options for the debugger.\n");
 }
 
 

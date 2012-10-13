@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell_misc.cpp,v 1.54 2009-05-27 09:15:42 qbix79 Exp $ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -57,7 +56,7 @@ void DOS_Shell::InputCommand(char * line) {
 			Bit16u dummy;
 			DOS_CloseFile(input_handle);
 			DOS_OpenFile("con",2,&dummy);
-			LOG(LOG_MISC,LOG_ERROR)("Reopening the input handle.This is a bug!");
+			LOG(LOG_MISC,LOG_ERROR)("Reopening the input handle. This is a bug!");
 		}
 		if (!n) {
 			size=0;			//Kill the while loop
@@ -175,6 +174,24 @@ void DOS_Shell::InputCommand(char * line) {
 						size++;
 					}
 					break;
+				case 15:		/* Shift-Tab */
+					if (l_completion.size()) {
+						if (it_completion == l_completion.begin()) it_completion = l_completion.end (); 
+						it_completion--;
+		
+						if (it_completion->length()) {
+							for (;str_index > completion_index; str_index--) {
+								// removes all characters
+								outc(8); outc(' '); outc(8);
+							}
+
+							strcpy(&line[completion_index], it_completion->c_str());
+							len = (Bit16u)it_completion->length();
+							str_len = str_index = completion_index + len;
+							size = CMD_MAXLINE - str_index - 2;
+							DOS_WriteFile(STDOUT, (Bit8u *)it_completion->c_str(), &len);
+						}
+					}
 				default:
 					break;
 				}
@@ -282,7 +299,7 @@ void DOS_Shell::InputCommand(char * line) {
 						}
 						res=DOS_FindNext();
 					}
-					/* Add excutable list to front of completion list. */
+					/* Add executable list to front of completion list. */
 					std::copy(executable.begin(),executable.end(),std::front_inserter(l_completion));
 					it_completion = l_completion.begin();
 					dos.dta(save_dta);

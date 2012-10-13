@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10.cpp,v 1.56 2009-09-06 19:25:34 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "mem.h"
@@ -107,7 +106,9 @@ static Bitu INT10_Handler(void) {
 		INT10_ReadCharAttr(&reg_ax,reg_bh);
 		break;						
 	case 0x09:								/* Write Character & Attribute at cursor CX times */
-		INT10_WriteChar(reg_al,reg_bl,reg_bh,reg_cx,true);
+		if (real_readb(BIOSMEM_SEG,BIOSMEM_CURRENT_MODE)==0x11)
+			INT10_WriteChar(reg_al,(reg_bl&0x80)|0x3f,reg_bh,reg_cx,true);
+		else INT10_WriteChar(reg_al,reg_bl,reg_bh,reg_cx,true);
 		break;
 	case 0x0A:								/* Write Character at cursor CX times */
 		INT10_WriteChar(reg_al,reg_bl,reg_bh,reg_cx,false);
@@ -138,8 +139,8 @@ static Bitu INT10_Handler(void) {
 		reg_ah=(Bit8u)real_readw(BIOSMEM_SEG,BIOSMEM_NB_COLS);
 		break;					
 	case 0x10:								/* Palette functions */
-		if ((machine==MCH_CGA) || ((!IS_VGA_ARCH) && (reg_al>0x02))) break;
-		//TODO: subfunction 0x03 for ega
+		if (!IS_EGAVGA_ARCH && (reg_al>0x02)) break;
+		else if (!IS_VGA_ARCH && (reg_al>0x03)) break;
 		switch (reg_al) {
 		case 0x00:							/* SET SINGLE PALETTE REGISTER */
 			INT10_SetSinglePaletteRegister(reg_bl,reg_bh);
@@ -163,7 +164,7 @@ static Bitu INT10_Handler(void) {
 			INT10_GetAllPaletteRegisters(SegPhys(es)+reg_dx);
 			break;
 		case 0x10:							/* SET INDIVIDUAL DAC REGISTER */
-			INT10_SetSingleDacRegister(reg_bl,reg_dh,reg_ch,reg_cl);
+			INT10_SetSingleDACRegister(reg_bl,reg_dh,reg_ch,reg_cl);
 			break;
 		case 0x12:							/* SET BLOCK OF DAC REGISTERS */
 			INT10_SetDACBlock(reg_bx,reg_cx,SegPhys(es)+reg_dx);
@@ -172,7 +173,7 @@ static Bitu INT10_Handler(void) {
 			INT10_SelectDACPage(reg_bl,reg_bh);
 			break;
 		case 0x15:							/* GET INDIVIDUAL DAC REGISTER */
-			INT10_GetSingleDacRegister(reg_bl,&reg_dh,&reg_ch,&reg_cl);
+			INT10_GetSingleDACRegister(reg_bl,&reg_dh,&reg_ch,&reg_cl);
 			break;
 		case 0x17:							/* GET BLOCK OF DAC REGISTER */
 			INT10_GetDACBlock(reg_bx,reg_cx,SegPhys(es)+reg_dx);
@@ -209,11 +210,11 @@ static Bitu INT10_Handler(void) {
 			break;
 		case 0x01:			/* Load 8x14 font */
 		case 0x11:
-			INT10_LoadFont(Real2Phys(int10.rom.font_14),reg_al==0x11,256,0,0,14);
+			INT10_LoadFont(Real2Phys(int10.rom.font_14),reg_al==0x11,256,0,reg_bl,14);
 			break;
 		case 0x02:			/* Load 8x8 font */
 		case 0x12:
-			INT10_LoadFont(Real2Phys(int10.rom.font_8_first),reg_al==0x12,256,0,0,8);
+			INT10_LoadFont(Real2Phys(int10.rom.font_8_first),reg_al==0x12,256,0,reg_bl,8);
 			break;
 		case 0x03:			/* Set Block Specifier */
 			IO_Write(0x3c4,0x3);IO_Write(0x3c5,reg_bl);
@@ -221,7 +222,7 @@ static Bitu INT10_Handler(void) {
 		case 0x04:			/* Load 8x16 font */
 		case 0x14:
 			if (!IS_VGA_ARCH) break;
-			INT10_LoadFont(Real2Phys(int10.rom.font_16),reg_al==0x14,256,0,0,16);
+			INT10_LoadFont(Real2Phys(int10.rom.font_16),reg_al==0x14,256,0,reg_bl,16);
 			break;
 /* Graphics mode calls */
 		case 0x20:			/* Set User 8x8 Graphics characters */
@@ -302,13 +303,8 @@ graphics_chars:
 				break;
 			}
 			if ((reg_bh<=7) || (svgaCard==SVGA_TsengET4K)) {
-				if (machine==MCH_EGA) {
-					reg_cx=0x0e;
-					reg_dl=0x18;
-				} else {
-					reg_cx=real_readw(BIOSMEM_SEG,BIOSMEM_CHAR_HEIGHT);
-					reg_dl=real_readb(BIOSMEM_SEG,BIOSMEM_NB_ROWS);
-				}
+				reg_cx=real_readw(BIOSMEM_SEG,BIOSMEM_CHAR_HEIGHT);
+				reg_dl=real_readb(BIOSMEM_SEG,BIOSMEM_NB_ROWS);
 			}
 			break;
 		default:
@@ -379,7 +375,7 @@ graphics_chars:
 				reg_al=0x12;
 				break;	
 			}		
-		case 0x32:							/* Video adressing */
+		case 0x32:							/* Video addressing */
 			if (!IS_VGA_ARCH) break;
 			LOG(LOG_INT10,LOG_ERROR)("Function 12:Call %2X not handled",reg_bl);
 			if (svgaCard==SVGA_TsengET4K) reg_al&=1;

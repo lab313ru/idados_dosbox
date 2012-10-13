@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: mixer.cpp,v 1.54 2009-09-05 11:10:04 qbix79 Exp $ */
 
 /* 
 	Remove the sdl code from here and have it handeld in the sdlmain.
@@ -602,7 +601,7 @@ MixerChannel* MixerObject::Install(MIXER_Handler handler,Bitu freq,const char * 
 		installed = true;
 		return MIXER_AddChannel(handler,freq,name);
 	} else {
-		E_Exit("allready added mixer channel.");
+		E_Exit("already added mixer channel.");
 		return 0; //Compiler happy
 	}
 }

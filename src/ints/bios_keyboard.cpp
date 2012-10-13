@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: bios_keyboard.cpp,v 1.36 2009-06-11 16:05:17 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "callback.h"
@@ -33,6 +32,8 @@
  * Define the following if this is the case */
 #if SDL_VERSION_ATLEAST(1, 2, 14)
 #define CAN_USE_LOCK 1
+/* For lower versions of SDL we also use a slight hack to get the startup states of numclock and capslock right.
+ * The proper way is in the mapper, but the repeating key is an unwanted side effect for lower versions of SDL */
 #endif
 
 static Bitu call_int16,call_irq1,call_irq6;
@@ -381,7 +382,7 @@ static Bitu IRQ1_Handler(void) {
 				add_key(scan_to_scanascii[scancode].normal+0x5000);
 			} else if (flags1 &0x04) {
 				add_key((scan_to_scanascii[scancode].control&0xff00)|0xe0);
-			} else if( ((flags1 &0x3) != 0) || ((flags1 &0x20) != 0) ) {
+			} else if( ((flags1 &0x3) != 0) || ((flags1 &0x20) != 0) ) { //Due to |0xe0 results are identical. 
 				add_key((scan_to_scanascii[scancode].shift&0xff00)|0xe0);
 			} else add_key((scan_to_scanascii[scancode].normal&0xff00)|0xe0);
 			break;
@@ -392,7 +393,7 @@ static Bitu IRQ1_Handler(void) {
 			mem_writeb(BIOS_KEYBOARD_TOKEN,token);
 		} else if (flags1 &0x04) {
 			add_key(scan_to_scanascii[scancode].control);
-		} else if( ((flags1 &0x3) != 0) || ((flags1 &0x20) != 0) ) {
+		} else if( ((flags1 &0x3) != 0) ^ ((flags1 &0x20) != 0) ) { //Xor shift and numlock (both means off)
 			add_key(scan_to_scanascii[scancode].shift);
 		} else add_key(scan_to_scanascii[scancode].normal);
 		break;
@@ -545,7 +546,7 @@ static Bitu INT16_Handler(void) {
 			reg_ax=temp;
 		}
 		break;
-	case 0x02:	/* GET SHIFT FlAGS */
+	case 0x02:	/* GET SHIFT FLAGS */
 		reg_al=mem_readb(BIOS_KEYBOARD_FLAGS1);
 		break;
 	case 0x03:	/* SET TYPEMATIC RATE AND DELAY */
@@ -564,8 +565,10 @@ static Bitu INT16_Handler(void) {
 		else reg_al=1;
 		break;
 	case 0x12: /* GET EXTENDED SHIFT STATES */
-		reg_al=mem_readb(BIOS_KEYBOARD_FLAGS1);
-		reg_ah=mem_readb(BIOS_KEYBOARD_FLAGS2);		
+		reg_al = mem_readb(BIOS_KEYBOARD_FLAGS1);
+		reg_ah = (mem_readb(BIOS_KEYBOARD_FLAGS2)&0x73)   |
+		         ((mem_readb(BIOS_KEYBOARD_FLAGS2)&4)<<5) | // SysReq pressed, bit 7
+		         (mem_readb(BIOS_KEYBOARD_FLAGS3)&0x0c);    // Right Ctrl/Alt pressed, bits 2,3
 		break;
 	case 0x55:
 		/* Weird call used by some dos apps */
@@ -591,10 +594,15 @@ static void InitBiosSegment(void) {
 	mem_writew(BIOS_KEYBOARD_BUFFER_HEAD,0x1e);
 	mem_writew(BIOS_KEYBOARD_BUFFER_TAIL,0x1e);
 	Bit8u flag1 = 0;
-	Bit8u leds = 16; /* Ack recieved */
-//MAPPER_Init takes care of this now ?
-//	if(startup_state_capslock) { flag1|=0x40; leds|=0x04;}
-//	if(startup_state_numlock){ flag1|=0x20; leds|=0x02;}
+	Bit8u leds = 16; /* Ack received */
+
+#if SDL_VERSION_ATLEAST(1, 2, 14)
+//Nothing, mapper handles all.
+#else
+	if (startup_state_capslock) { flag1|=0x40; leds|=0x04;}
+	if (startup_state_numlock)  { flag1|=0x20; leds|=0x02;}
+#endif
+
 	mem_writeb(BIOS_KEYBOARD_FLAGS1,flag1);
 	mem_writeb(BIOS_KEYBOARD_FLAGS2,0);
 	mem_writeb(BIOS_KEYBOARD_FLAGS3,16); /* Enhanced keyboard installed */	

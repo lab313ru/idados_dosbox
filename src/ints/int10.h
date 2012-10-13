@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: int10.h,v 1.42 2009-09-06 19:25:34 c2woody Exp $ */
 
 #include "vga.h"
 
@@ -187,8 +186,8 @@ void INT10_ToggleBlinkingBit(Bit8u state);
 void INT10_GetSinglePaletteRegister(Bit8u reg,Bit8u * val);
 void INT10_GetOverscanBorderColor(Bit8u * val);
 void INT10_GetAllPaletteRegisters(PhysPt data);
-void INT10_SetSingleDacRegister(Bit8u index,Bit8u red,Bit8u green,Bit8u blue);
-void INT10_GetSingleDacRegister(Bit8u index,Bit8u * red,Bit8u * green,Bit8u * blue);
+void INT10_SetSingleDACRegister(Bit8u index,Bit8u red,Bit8u green,Bit8u blue);
+void INT10_GetSingleDACRegister(Bit8u index,Bit8u * red,Bit8u * green,Bit8u * blue);
 void INT10_SetDACBlock(Bit16u index,Bit16u count,PhysPt data);
 void INT10_GetDACBlock(Bit16u index,Bit16u count,PhysPt data);
 void INT10_SelectDACPage(Bit8u function,Bit8u mode);

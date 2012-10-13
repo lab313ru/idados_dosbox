@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: bios_disk.cpp,v 1.40 2009-08-23 17:24:54 c2woody Exp $ */
 
 #include "dosbox.h"
 #include "callback.h"
@@ -86,13 +85,26 @@ void updateDPT(void) {
 	}
 }
 
+void incrementFDD(void) {
+	Bit16u equipment=mem_readw(BIOS_CONFIGURATION);
+	if(equipment&1) {
+		Bitu numofdisks = (equipment>>6)&3;
+		numofdisks++;
+		if(numofdisks > 1) numofdisks=1;//max 2 floppies at the moment
+		equipment&=~0x00C0;
+		equipment|=(numofdisks<<6);
+	} else equipment|=1;
+	mem_writew(BIOS_CONFIGURATION,equipment);
+	CMOS_SetRegister(0x14, (Bit8u)(equipment&0xff));
+}
+
 void swapInDisks(void) {
 	bool allNull = true;
 	Bits diskcount = 0;
 	Bits swapPos = swapPosition;
 	int i;
 
-	/* Check to make sure there's atleast one setup image */
+	/* Check to make sure that  there is at least one setup image */
 	for(i=0;i<MAX_SWAPPABLE_DISKS;i++) {
 		if(diskSwap[i]!=NULL) {
 			allNull = false;
@@ -150,8 +162,9 @@ Bit8u imageDisk::Read_AbsoluteSector(Bit32u sectnum, void * data) {
 
 	bytenum = sectnum * sector_size;
 
-	fseek(diskimg,bytenum,SEEK_SET);
-	fread(data, 1, sector_size, diskimg);
+	if (bytenum!=current_fpos) fseek(diskimg,bytenum,SEEK_SET);
+	size_t ret=fread(data, 1, sector_size, diskimg);
+	current_fpos=bytenum+ret;
 
 	return 0x00;
 }
@@ -162,7 +175,6 @@ Bit8u imageDisk::Write_Sector(Bit32u head,Bit32u cylinder,Bit32u sector,void * d
 	sectnum = ( (cylinder * heads + head) * sectors ) + sector - 1L;
 
 	return Write_AbsoluteSector(sectnum, data);
-
 }
 
 
@@ -173,8 +185,9 @@ Bit8u imageDisk::Write_AbsoluteSector(Bit32u sectnum, void *data) {
 
 	//LOG_MSG("Writing sectors to %ld at bytenum %d", sectnum, bytenum);
 
-	fseek(diskimg,bytenum,SEEK_SET);
+	if (bytenum!=current_fpos) fseek(diskimg,bytenum,SEEK_SET);
 	size_t ret=fwrite(data, sector_size, 1, diskimg);
+	current_fpos=bytenum+ret;
 
 	return ((ret>0)?0x00:0x05);
 
@@ -185,7 +198,9 @@ imageDisk::imageDisk(FILE *imgFile, Bit8u *imgName, Bit32u imgSizeK, bool isHard
 	cylinders = 0;
 	sectors = 0;
 	sector_size = 512;
+	current_fpos = 0;
 	diskimg = imgFile;
+	fseek(diskimg,0,SEEK_SET);
 	
 	memset(diskname,0,512);
 	if(strlen((const char *)imgName) > 511) {
@@ -217,16 +232,7 @@ imageDisk::imageDisk(FILE *imgFile, Bit8u *imgName, Bit32u imgSizeK, bool isHard
 		if(!founddisk) {
 			active = false;
 		} else {
-			Bit16u equipment=mem_readw(BIOS_CONFIGURATION);
-			if(equipment&1) {
-				Bitu numofdisks = (equipment>>6)&3;
-				numofdisks++;
-				if(numofdisks > 1) numofdisks=1;//max 2 floppies at the moment
-				equipment&=~0x00C0;
-				equipment|=(numofdisks<<6);
-			} else equipment|=1;
-			mem_writew(BIOS_CONFIGURATION,equipment);
-			CMOS_SetRegister(0x14, (Bit8u)(equipment&0xff));
+			incrementFDD();
 		}
 	}
 }
@@ -327,12 +333,14 @@ static Bitu INT13_DiskHandler(void) {
 				if ((machine==MCH_CGA) || (machine==MCH_PCJR)) {
 					/* those bioses call floppy drive reset for invalid drive values */
 					if (((imageDiskList[0]) && (imageDiskList[0]->active)) || ((imageDiskList[1]) && (imageDiskList[1]->active))) {
+						if (reg_dl<0x80) reg_ip++;
 						last_status = 0x00;
 						CALLBACK_SCF(false);
 					}
 				}
 				return CBRET_NONE;
 			}
+			if (reg_dl<0x80) reg_ip++;
 			last_status = 0x00;
 			CALLBACK_SCF(false);
 		}
@@ -494,7 +502,7 @@ static Bitu INT13_DiskHandler(void) {
 void BIOS_SetupDisks(void) {
 /* TODO Start the time correctly */
 	call_int13=CALLBACK_Allocate();	
-	CALLBACK_Setup(call_int13,&INT13_DiskHandler,CB_IRET,"Int 13 Bios disk");
+	CALLBACK_Setup(call_int13,&INT13_DiskHandler,CB_INT13,"Int 13 Bios disk");
 	RealSetVec(0x13,CALLBACK_RealPointer(call_int13));
 	int i;
 	for(i=0;i<4;i++) {

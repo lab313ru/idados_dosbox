@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sblaster.cpp,v 1.78 2009-10-25 16:22:22 c2woody Exp $ */
 
 #include <iomanip>
 #include <sstream>
@@ -504,6 +503,8 @@ static void GenerateDMASound(Bitu size) {
 	sb.dma.left-=read;
 	if (!sb.dma.left) {
 		PIC_RemoveEvents(END_DMA_Event);
+		if (sb.dma.mode >= DSP_DMA_16) SB_RaiseIRQ(SB_IRQ_16);
+		else SB_RaiseIRQ(SB_IRQ_8);
 		if (!sb.dma.autoinit) {
 			LOG(LOG_SB,LOG_NORMAL)("Single cycle transfer ended");
 			sb.mode=MODE_NONE;
@@ -515,8 +516,6 @@ static void GenerateDMASound(Bitu size) {
 				sb.mode=MODE_NONE;
 			}
 		}
-		if (sb.dma.mode >= DSP_DMA_16) SB_RaiseIRQ(SB_IRQ_16);
-		else SB_RaiseIRQ(SB_IRQ_8);
 	}
 }
 
@@ -872,6 +871,11 @@ static void DSP_DoCommand(void) {
 	case 0x76:  /* 074h : Single Cycle 3-bit(2.6bit) ADPCM */
 		DSP_PrepareDMA_Old(DSP_DMA_3,false,false);
 		break;
+	case 0x7d:	/* Auto Init 4-bit ADPCM Reference */
+		DSP_SB2_ABOVE;
+		sb.adpcm.haveref=true;
+		DSP_PrepareDMA_Old(DSP_DMA_4,true,false);
+		break;
 	case 0x17:	/* 017h : Single Cycle 2-bit ADPCM Reference*/
 		sb.adpcm.haveref=true;
 	case 0x16:  /* 074h : Single Cycle 2-bit ADPCM */
@@ -900,6 +904,9 @@ static void DSP_DoCommand(void) {
 	case 0xd0:	/* Halt 8-bit DMA */
 //		DSP_ChangeMode(MODE_NONE);
 //		Games sometimes already program a new dma before stopping, gives noise
+		if (sb.mode==MODE_NONE) {
+			// possibly different code here that does not switch to MODE_DMA_PAUSE
+		}
 		sb.mode=MODE_DMA_PAUSE;
 		PIC_RemoveEvents(END_DMA_Event);
 		break;
@@ -920,7 +927,7 @@ static void DSP_DoCommand(void) {
 	case 0xd4:	/* Continue DMA 8-bit*/
 		if (sb.mode==MODE_DMA_PAUSE) {
 			sb.mode=MODE_DMA_MASKED;
-			sb.dma.chan->Register_Callback(DSP_DMA_CallBack);
+			if (sb.dma.chan!=NULL) sb.dma.chan->Register_Callback(DSP_DMA_CallBack);
 		}
 		break;
 	case 0xd9:  /* Exit Autoinitialize 16-bit */
@@ -979,6 +986,10 @@ static void DSP_DoCommand(void) {
 	case 0xf2:	/* Trigger 8bit IRQ */
 		SB_RaiseIRQ(SB_IRQ_8);
 		break;
+	case 0xf3:   /* Trigger 16bit IRQ */
+		DSP_SB16_ONLY; 
+		SB_RaiseIRQ(SB_IRQ_16);
+		break;
 	case 0xf8:  /* Undocumented, pre-SB16 only */
 		DSP_FlushData();
 		DSP_AddData(0);
@@ -990,7 +1001,7 @@ static void DSP_DoCommand(void) {
 		DSP_SB2_ABOVE;
 		LOG(LOG_SB,LOG_ERROR)("DSP:Unimplemented MIDI UART command %2X",sb.dsp.cmd);
 		break;
-	case 0x7d: case 0x7f: case 0x1f:
+	case 0x7f: case 0x1f:
 		DSP_SB2_ABOVE;
 		LOG(LOG_SB,LOG_ERROR)("DSP:Unimplemented auto-init DMA ADPCM command %2X",sb.dsp.cmd);
 		break;
@@ -1090,11 +1101,16 @@ static void CTMIXER_UpdateVolumes(void) {
 	chan=MIXER_FindChannel("FM");
 	if (chan) chan->SetVolume(float(sb.mixer.master[0])/31.0f*CALCVOL(sb.mixer.fm[0]),
 							  float(sb.mixer.master[1])/31.0f*CALCVOL(sb.mixer.fm[1]));
+	chan=MIXER_FindChannel("CDAUDIO");
+	if (chan) chan->SetVolume(float(sb.mixer.master[0])/31.0f*CALCVOL(sb.mixer.cda[0]),
+							  float(sb.mixer.master[1])/31.0f*CALCVOL(sb.mixer.cda[1]));
 }
 
 static void CTMIXER_Reset(void) {
 	sb.mixer.fm[0]=
 	sb.mixer.fm[1]=
+	sb.mixer.cda[0]=
+	sb.mixer.cda[1]=
 	sb.mixer.dac[0]=
 	sb.mixer.dac[1]=31;
 	sb.mixer.master[0]=
@@ -1147,10 +1163,15 @@ static void CTMIXER_Write(Bit8u val) {
 		break;
 	case 0x08:		/* CDA Volume (SB2 Only) */
 		SETPROVOL(sb.mixer.cda,(val&0xf)|(val<<4));
+		CTMIXER_UpdateVolumes();
 		break;
 	case 0x0a:		/* Mic Level (SBPRO) or DAC Volume (SB2): 2-bit, 3-bit on SB16 */
-		if (sb.type==SBT_2) sb.mixer.dac[0]=sb.mixer.dac[1]=((val & 0x6) << 2)|3;
-		else sb.mixer.mic=((val & 0x7) << 2)|(sb.type==SBT_16?1:3);
+		if (sb.type==SBT_2) {
+			sb.mixer.dac[0]=sb.mixer.dac[1]=((val & 0x6) << 2)|3;
+			CTMIXER_UpdateVolumes();
+		} else {
+			sb.mixer.mic=((val & 0x7) << 2)|(sb.type==SBT_16?1:3);
+		}
 		break;
 	case 0x0e:		/* Output/Stereo Select */
 		sb.mixer.stereo=(val & 0x2) > 0;
@@ -1168,6 +1189,7 @@ static void CTMIXER_Write(Bit8u val) {
 		break;
 	case 0x28:		/* CD Audio Volume (SBPRO) */
 		SETPROVOL(sb.mixer.cda,val);
+		CTMIXER_UpdateVolumes();
 		break;
 	case 0x2e:		/* Line-in Volume (SBPRO) */
 		SETPROVOL(sb.mixer.lin,val);
@@ -1211,10 +1233,16 @@ static void CTMIXER_Write(Bit8u val) {
 		}
 		break;
 	case 0x36:		/* CD Volume Left (SB16) */
-		if (sb.type==SBT_16) sb.mixer.cda[0]=val>>3;
+		if (sb.type==SBT_16) {
+			sb.mixer.cda[0]=val>>3;
+			CTMIXER_UpdateVolumes();
+		}
 		break;
 	case 0x37:		/* CD Volume Right (SB16) */
-		if (sb.type==SBT_16) sb.mixer.cda[1]=val>>3;
+		if (sb.type==SBT_16) {
+			sb.mixer.cda[1]=val>>3;
+			CTMIXER_UpdateVolumes();
+		}
 		break;
 	case 0x38:		/* Line-in Volume Left (SB16) */
 		if (sb.type==SBT_16) sb.mixer.lin[0]=val>>3;
@@ -1345,7 +1373,8 @@ static Bit8u CTMIXER_Read(void) {
 		return ret;
 	case 0x82:		/* IRQ Status */
 		return	(sb.irq.pending_8bit ? 0x1 : 0) |
-				(sb.irq.pending_16bit ? 0x2 : 0);
+				(sb.irq.pending_16bit ? 0x2 : 0) | 
+				((sb.type == SBT_16) ? 0x20 : 0);
 	default:
 		if (	((sb.type == SBT_PRO1 || sb.type == SBT_PRO2) && sb.mixer.index==0x0c) || /* Input control on SBPro */
 			(sb.type == SBT_16 && sb.mixer.index >= 0x3b && sb.mixer.index <= 0x47)) /* New SB16 registers */

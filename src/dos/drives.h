@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drives.h,v 1.41 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #ifndef _DRIVES_H__
 #define _DRIVES_H__
@@ -172,7 +171,7 @@ public:
 	Bit32u appendCluster(Bit32u startCluster);
 	void deleteClustChain(Bit32u startCluster);
 	Bit32u getFirstFreeClust(void);
-	bool directoryBrowse(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum);
+	bool directoryBrowse(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum, Bit32s start=0);
 	bool directoryChange(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum);
 	imageDisk *loadedDisk;
 	bool created_successfully;
@@ -298,11 +297,13 @@ struct isoDirEntry {
 #endif
 
 #define ISO_FRAMESIZE		2048
+#define ISO_ASSOCIATED		4
 #define ISO_DIRECTORY		2
 #define ISO_HIDDEN		1
 #define ISO_MAX_FILENAME_LENGTH 37
 #define ISO_MAXPATHNAME		256
 #define ISO_FIRST_VD		16
+#define IS_ASSOC(fileFlags)	(fileFlags & ISO_ASSOCIATED)
 #define IS_DIR(fileFlags)	(fileFlags & ISO_DIRECTORY)
 #define IS_HIDDEN(fileFlags)	(fileFlags & ISO_HIDDEN)
 #define ISO_MAX_HASH_TABLE_SIZE 	100

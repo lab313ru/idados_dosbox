@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dma.cpp,v 1.41 2009-07-24 09:56:14 c2woody Exp $ */
 
 #include <string.h>
 #include "dosbox.h"
@@ -48,7 +47,9 @@ static void DMA_BlockRead(PhysPt spage,PhysPt offset,void * data,Bitu size,Bit8u
 	offset <<= dma16;
 	Bit32u dma_wrap = ((0xffff<<dma16)+dma16) | dma_wrapping;
 	for ( ; size ; size--, offset++) {
-		if (offset>(dma_wrapping<<dma16)) E_Exit("DMA segbound wrapping (read)");
+		if (offset>(dma_wrapping<<dma16)) {
+			LOG_MSG("DMA segbound wrapping (read): %x:%x size %x [%x] wrap %x",spage,offset,size,dma16,dma_wrapping);
+		}
 		offset &= dma_wrap;
 		Bitu page = highpart_addr_page+(offset >> 12);
 		/* care for EMS pageframe etc. */
@@ -67,7 +68,9 @@ static void DMA_BlockWrite(PhysPt spage,PhysPt offset,void * data,Bitu size,Bit8
 	offset <<= dma16;
 	Bit32u dma_wrap = ((0xffff<<dma16)+dma16) | dma_wrapping;
 	for ( ; size ; size--, offset++) {
-		if (offset>(dma_wrapping<<dma16)) E_Exit("DMA segbound wrapping (write)");
+		if (offset>(dma_wrapping<<dma16)) {
+			LOG_MSG("DMA segbound wrapping (write): %x:%x size %x [%x] wrap %x",spage,offset,size,dma16,dma_wrapping);
+		}
 		offset &= dma_wrap;
 		Bitu page = highpart_addr_page+(offset >> 12);
 		/* care for EMS pageframe etc. */

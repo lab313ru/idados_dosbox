@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_fat.cpp,v 1.28 2009-06-19 18:28:10 c2woody Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -983,11 +982,13 @@ bool fatDrive::GetFileAttr(char *name, Bit16u *attr) {
 		/* Find directory entry in parent directory */
 		Bit32s fileidx = 2;
 		if (dirClust==0) fileidx = 0;	// root directory
-		while(directoryBrowse(dirClust, &fileEntry, fileidx)) {
+		Bit32s last_idx=0;
+		while(directoryBrowse(dirClust, &fileEntry, fileidx, last_idx)) {
 			if(memcmp(&fileEntry.entryname, &pathName[0], 11) == 0) {
 				*attr=fileEntry.attrib;
 				return true;
 			}
+			last_idx=fileidx;
 			fileidx++;
 		}
 		return false;
@@ -995,12 +996,15 @@ bool fatDrive::GetFileAttr(char *name, Bit16u *attr) {
 	return true;
 }
 
-bool fatDrive::directoryBrowse(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum) {
+bool fatDrive::directoryBrowse(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum, Bit32s start/*=0*/) {
 	direntry sectbuf[16];	/* 16 directory entries per sector */
 	Bit32u logentsector;	/* Logical entry sector */
 	Bit32u entryoffset = 0;	/* Index offset within sector */
 	Bit32u tmpsector;
-	Bit16u dirPos = 0;
+	if ((start<0) || (start>65535)) return false;
+	Bit16u dirPos = (Bit16u)start;
+	if (entNum<start) return false;
+	entNum-=start;
 
 	while(entNum>=0) {
 

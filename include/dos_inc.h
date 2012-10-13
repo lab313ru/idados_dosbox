@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_inc.h,v 1.83 2009-10-28 21:45:12 qbix79 Exp $ */
 
 #ifndef DOSBOX_DOS_INC_H
 #define DOSBOX_DOS_INC_H
@@ -27,6 +26,8 @@
 #ifndef DOSBOX_MEM_H
 #include "mem.h"
 #endif
+
+#include <stddef.h> //for offsetof
 
 #ifdef _MSC_VER
 #pragma pack (1)
@@ -176,8 +177,8 @@ bool DOS_FCBFindFirst(Bit16u seg,Bit16u offset);
 bool DOS_FCBFindNext(Bit16u seg,Bit16u offset);
 Bit8u DOS_FCBRead(Bit16u seg,Bit16u offset, Bit16u numBlocks);
 Bit8u DOS_FCBWrite(Bit16u seg,Bit16u offset,Bit16u numBlocks);
-Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore);
-Bit8u DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u numRec,bool restore);
+Bit8u DOS_FCBRandomRead(Bit16u seg,Bit16u offset,Bit16u * numRec,bool restore);
+Bit8u DOS_FCBRandomWrite(Bit16u seg,Bit16u offset,Bit16u * numRec,bool restore);
 bool DOS_FCBGetFileSize(Bit16u seg,Bit16u offset);
 bool DOS_FCBDeleteFile(Bit16u seg,Bit16u offset);
 bool DOS_FCBRenameFile(Bit16u seg, Bit16u offset);
@@ -506,6 +507,7 @@ public:
 	bool Extended(void);
 	void GetAttr(Bit8u & attr);
 	void SetAttr(Bit8u attr);
+	void SetResultAttr(Bit8u attr);
 	bool Valid(void);
 private:
 	bool extended;

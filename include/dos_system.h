@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_system.h,v 1.47 2009-03-04 21:08:22 c2woody Exp $ */
 
 #ifndef DOSBOX_DOS_SYSTEM_H
 #define DOSBOX_DOS_SYSTEM_H
@@ -156,8 +155,9 @@ public:
 	public:
 		CFileInfo(void) {
 			orgname[0] = shortname[0] = 0;
-			nextEntry = shortNr = 0;
 			isDir = false;
+			id = MAX_OPENDIRS;
+			nextEntry = shortNr = 0;
 		}
 		~CFileInfo(void) {
 			for (Bit32u i=0; i<fileList.size(); i++) delete fileList[i];
@@ -167,6 +167,7 @@ public:
 		char		orgname		[CROSS_LEN];
 		char		shortname	[DOS_NAMELENGTH_ASCII];
 		bool		isDir;
+		Bit16u		id;
 		Bitu		nextEntry;
 		Bitu		shortNr;
 		// contents
@@ -175,6 +176,8 @@ public:
 	};
 
 private:
+	void ClearFileInfo(CFileInfo *dir);
+	void DeleteFileInfo(CFileInfo *dir);
 
 	bool		RemoveTrailingDot	(char* shortname);
 	Bits		GetLongName		(CFileInfo* info, char* shortname);
@@ -203,7 +206,6 @@ private:
 	Bit16u		srchNr;
 	CFileInfo*	dirSearch			[MAX_OPENDIRS];
 	char		dirSearchName		[MAX_OPENDIRS];
-	bool		free				[MAX_OPENDIRS];
 	CFileInfo*	dirFindFirst		[MAX_OPENDIRS];
 	Bit16u		nextFreeFindFirst;
 
@@ -247,7 +249,7 @@ public:
 	virtual void Activate(void) {};
 };
 
-enum { OPEN_READ=0,OPEN_WRITE=1,OPEN_READWRITE=2, DOS_NOT_INHERIT=128};
+enum { OPEN_READ=0, OPEN_WRITE=1, OPEN_READWRITE=2, OPEN_READ_NO_MOD=4, DOS_NOT_INHERIT=128};
 enum { DOS_SEEK_SET=0,DOS_SEEK_CUR=1,DOS_SEEK_END=2};
 
 

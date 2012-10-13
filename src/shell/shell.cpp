@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: shell.cpp,v 1.100 2009-07-08 20:05:41 c2woody Exp $ */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -50,14 +49,14 @@ typedef std::list<std::string>::iterator auto_it;
 void VFILE_Remove(const char *name);
 
 void AutoexecObject::Install(const std::string &in) {
-	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf.c_str());
+	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: already created %s",buf.c_str());
 	installed = true;
 	buf = in;
 	autoexec_strings.push_back(buf);
 	this->CreateAutoexec();
 
 	//autoexec.bat is normally created AUTOEXEC_Init.
-	//But if we are allready running (first_shell)
+	//But if we are already running (first_shell)
 	//we have to update the envirionment to display changes
 
 	if(first_shell)	{
@@ -78,7 +77,7 @@ void AutoexecObject::Install(const std::string &in) {
 }
 
 void AutoexecObject::InstallBefore(const std::string &in) {
-	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: allready created %s",buf.c_str());
+	if(GCC_UNLIKELY(installed)) E_Exit("autoexec: already created %s",buf.c_str());
 	installed = true;
 	buf = in;
 	autoexec_strings.push_front(buf);
@@ -286,7 +285,7 @@ void DOS_Shell::RunInternal(void)
 void DOS_Shell::Run(void) {
 	char input_line[CMD_MAXLINE] = {0};
 	std::string line;
-	if (cmd->FindStringRemain("/C",line)) {
+	if (cmd->FindStringRemainBegin("/C",line)) {
 		strcpy(input_line,line.c_str());
 		char* sep = strpbrk(input_line,"\r\n"); //GTA installer
 		if (sep) *sep = 0;
@@ -412,7 +411,7 @@ public:
 				if (access(buffer,F_OK)) goto nomount;
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
-				/* Save the non modified filename (so boot and imgmount can use it (long filenames, case sensivitive)*/
+				/* Save the non-modified filename (so boot and imgmount can use it (long filenames, case sensivitive)) */
 				strcpy(orig,name);
 				upcase(name);
 				if(strstr(name,".BAT") != 0) {
@@ -425,10 +424,11 @@ public:
 					/* Boot image files */
 					autoexec[15].Install(std::string("BOOT ") + orig);
 				} else if((strstr(name,".ISO") != 0) || (strstr(name,".CUE") !=0 )) {
-					if(secure) autoexec[14].Install("z:\\config.com -securemode");
 					/* imgmount CD image files */
-					autoexec[15].Install(std::string("IMGMOUNT D \"") + orig + std::string("\" -t iso"));
+					/* securemode gets a different number from the previous branches! */
+					autoexec[14].Install(std::string("IMGMOUNT D \"") + orig + std::string("\" -t iso"));
 					//autoexec[16].Install("D:");
+					if(secure) autoexec[15].Install("z:\\config.com -securemode");
 					/* Makes no sense to exit here */
 				} else {
 					if(secure) autoexec[14].Install("z:\\config.com -securemode");
@@ -465,6 +465,23 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_CHDIR_HINT","To change to different drive type \033[31m%c:\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_2","directoryname is longer than 8 characters and/or contains spaces.\nTry \033[31mcd %s\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_3","You are still on drive Z:, change to a mounted drive with \033[31mC:\033[0m.\n");
+	MSG_Add("SHELL_CMD_DATE_HELP","Displays or changes the internal date.\n");
+	MSG_Add("SHELL_CMD_DATE_ERROR","The specified date is not correct.\n");
+	MSG_Add("SHELL_CMD_DATE_DAYS","3SunMonTueWedThuFriSat"); // "2SoMoDiMiDoFrSa"
+	MSG_Add("SHELL_CMD_DATE_NOW","Current date: ");
+	MSG_Add("SHELL_CMD_DATE_SETHLP","Type 'date MM-DD-YYYY' to change.\n");
+	MSG_Add("SHELL_CMD_DATE_FORMAT","M/D/Y");
+	MSG_Add("SHELL_CMD_DATE_HELP_LONG","DATE [[/T] [/H] [/S] | MM-DD-YYYY]\n"\
+									"  MM-DD-YYYY: new date to set\n"\
+									"  /S:         Permanently use host time and date as DOS time\n"\
+                                    "  /F:         Switch back to DOSBox internal time (opposite of /S)\n"\
+									"  /T:         Only display date\n"\
+									"  /H:         Synchronize with host\n");
+	MSG_Add("SHELL_CMD_TIME_HELP","Displays the internal time.\n");
+	MSG_Add("SHELL_CMD_TIME_NOW","Current time: ");
+	MSG_Add("SHELL_CMD_TIME_HELP_LONG","TIME [/T] [/H]\n"\
+									"  /T:         Display simple time\n"\
+									"  /H:         Synchronize with host\n");
 	MSG_Add("SHELL_CMD_MKDIR_ERROR","Unable to make: %s.\n");
 	MSG_Add("SHELL_CMD_RMDIR_ERROR","Unable to remove: %s.\n");
 	MSG_Add("SHELL_CMD_DEL_ERROR","Unable to delete: %s.\n");
@@ -487,14 +504,14 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_PAUSE_HELP","Waits for 1 keystroke to continue.\n");
 	MSG_Add("SHELL_CMD_COPY_FAILURE","Copy failure : %s.\n");
 	MSG_Add("SHELL_CMD_COPY_SUCCESS","   %d File(s) copied.\n");
-	MSG_Add("SHELL_CMD_SUBST_NO_REMOVE","Removing drive not supported. Doing nothing.\n");
+	MSG_Add("SHELL_CMD_SUBST_NO_REMOVE","Unable to remove, drive not in use.\n");
 	MSG_Add("SHELL_CMD_SUBST_FAILURE","SUBST failed. You either made an error in your commandline or the target drive is already used.\nIt's only possible to use SUBST on Local drives");
 
 	MSG_Add("SHELL_STARTUP_BEGIN",
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mWelcome to DOSBox v%-8s\033[37m                                        \xBA\n"
+		"\xBA \033[32mWelcome to DOSBox %-8s\033[37m                                         \xBA\n"
 		"\xBA                                                                    \xBA\n"
 //		"\xBA DOSBox runs real and protected mode games.                         \xBA\n"
 		"\xBA For a short introduction for new users type: \033[33mINTRO\033[37m                 \xBA\n"

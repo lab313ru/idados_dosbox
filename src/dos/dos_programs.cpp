@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dos_programs.cpp,v 1.94 2009-06-12 20:10:09 c2woody Exp $ */
 
 #include "dosbox.h"
 #include <stdlib.h>
@@ -49,27 +48,55 @@ Bitu DEBUG_EnableDebugger(void);
 #endif
 
 void MSCDEX_SetCDInterface(int intNr, int forceCD);
-
+static Bitu ZDRIVE_NUM = 25;
 
 class MOUNT : public Program {
 public:
-	void Run(void)
-	{
+	void ListMounts(void) {
+		char name[DOS_NAMELENGTH_ASCII];Bit32u size;Bit16u date;Bit16u time;Bit8u attr;
+		/* Command uses dta so set it to our internal dta */
+		RealPt save_dta = dos.dta();
+		dos.dta(dos.tables.tempdta);
+		DOS_DTA dta(dos.dta());
+
+		WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_1"));
+		WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_FORMAT"),"Drive","Type","Label");
+		for(int p = 0;p < 8;p++) WriteOut("----------");
+
+		for (int d = 0;d < DOS_DRIVES;d++) {
+			if (!Drives[d]) continue;
+
+			char root[4] = {'A'+d,':','\\',0};
+			bool ret = DOS_FindFirst(root,DOS_ATTR_VOLUME);
+			if (ret) {
+				dta.GetResult(name,size,date,time,attr);
+				DOS_FindNext(); //Mark entry as invalid
+			} else name[0] = 0;
+
+			/* Change 8.3 to 11.0 */
+			char* dot = strchr(name,'.');
+			if(dot && (dot - name == 8) ) { 
+				name[8] = name[9];name[9] = name[10];name[10] = name[11];name[11] = 0;
+			}
+
+			root[1] = 0; //This way, the format string can be reused.
+			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_FORMAT"),root, Drives[d]->GetInfo(),name);		
+		}
+		dos.dta(save_dta);
+	}
+
+	void Run(void) {
 		DOS_Drive * newdrive;char drive;
 		std::string label;
 		std::string umount;
+		std::string newz;
 
 		//Hack To allow long commandlines
 		ChangeToLongCmd();
 		/* Parse the command line */
 		/* if the command line is empty show current mounts */
 		if (!cmd->GetCount()) {
-			WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_1"));
-			for (int d=0;d<DOS_DRIVES;d++) {
-				if (Drives[d]) {
-					WriteOut(MSG_Get("PROGRAM_MOUNT_STATUS_2"),d+'A',Drives[d]->GetInfo());
-				}
-			}
+			ListMounts();
 			return;
 		}
 
@@ -84,12 +111,12 @@ public:
 		if (cmd->FindString("-u",umount,false)) {
 			umount[0] = toupper(umount[0]);
 			int i_drive = umount[0]-'A';
-				if(i_drive < DOS_DRIVES && i_drive >= 0 && Drives[i_drive]) {
+				if (i_drive < DOS_DRIVES && i_drive >= 0 && Drives[i_drive]) {
 					switch (DriveManager::UnmountDrive(i_drive)) {
 					case 0:
 						Drives[i_drive] = 0;
 						if(i_drive == DOS_GetDefaultDrive()) 
-							DOS_SetDrive(toupper('Z') - 'A');
+							DOS_SetDrive(ZDRIVE_NUM);
 						WriteOut(MSG_Get("PROGRAM_MOUNT_UMOUNT_SUCCESS"),umount[0]);
 						break;
 					case 1:
@@ -104,8 +131,46 @@ public:
 				}
 			return;
 		}
-	   
-		// Show list of cdroms
+		
+		/* Check for moving Z: */
+		/* Only allowing moving it once. It is merely a convenience added for the wine team */
+		if (ZDRIVE_NUM == 25 && cmd->FindString("-z", newz,false)) {
+			newz[0] = toupper(newz[0]);
+			int i_newz = newz[0] - 'A';
+			if (i_newz >= 0 && i_newz < DOS_DRIVES-1 && !Drives[i_newz]) {
+				ZDRIVE_NUM = i_newz;
+				/* remap drives */
+				Drives[i_newz] = Drives[25];
+				Drives[25] = 0;
+				DOS_Shell *fs = static_cast<DOS_Shell *>(first_shell); //dynamic ?				
+				/* Update environment */
+				std::string line = "";
+				char ppp[2] = {newz[0],0};
+				std::string tempenv = ppp; tempenv += ":\\";
+				if (fs->GetEnvStr("PATH",line)){
+					std::string::size_type idx = line.find('=');
+					std::string value = line.substr(idx +1 , std::string::npos);
+					while ( (idx = value.find("Z:\\")) != std::string::npos ||
+					        (idx = value.find("z:\\")) != std::string::npos  )
+						value.replace(idx,3,tempenv);
+					line = value;
+				}
+				if (!line.size()) line = tempenv;
+				fs->SetEnv("PATH",line.c_str());
+				tempenv += "COMMAND.COM";
+				fs->SetEnv("COMSPEC",tempenv.c_str());
+
+				/* Update batch file if running from Z: (very likely: autoexec) */
+				if(fs->bf) {
+					std::string &name = fs->bf->filename;
+					if(name.length() >2 &&  name[0] == 'Z' && name[1] == ':') name[0] = newz[0];
+				}
+				/* Change the active drive */
+				if (DOS_GetDefaultDrive() == 25) DOS_SetDrive(i_newz);
+			}
+			return;
+		}
+		/* Show list of cdroms */
 		if (cmd->FindExist("-cd",false)) {
 			int num = SDL_CDNumDrives();
    			WriteOut(MSG_Get("PROGRAM_MOUNT_CDROMS_FOUND"),num);
@@ -126,12 +191,12 @@ public:
 				str_size="512,1,2880,2880";/* All space free */
 				mediaid=0xF0;		/* Floppy 1.44 media */
 			} else if (type=="dir") {
-				// 512*127*16383==~1GB total size
-				// 512*127*4031==~250MB total free size
-				str_size="512,127,16383,4031";
+				// 512*32*32765==~500MB total size
+				// 512*32*16000==~250MB total free size
+				str_size="512,32,32765,16000";
 				mediaid=0xF8;		/* Hard Disk */
 			} else if (type=="cdrom") {
-				str_size="2048,1,65535,0";
+				str_size="2048,1,32765,0";
 				mediaid=0xF8;		/* Hard Disk */
 			} else {
 				WriteOut(MSG_Get("PROGAM_MOUNT_ILL_TYPE"),type.c_str());
@@ -141,11 +206,17 @@ public:
 			std::string mb_size;
 			if(cmd->FindString("-freesize",mb_size,true)) {
 				char teststr[1024];
-				Bit16u sizemb = static_cast<Bit16u>(atoi(mb_size.c_str()));
+				Bit16u freesize = static_cast<Bit16u>(atoi(mb_size.c_str()));
 				if (type=="floppy") {
-					sprintf(teststr,"512,1,2880,%d",sizemb*1024/(512*1));
+					// freesize in kb
+					sprintf(teststr,"512,1,2880,%d",freesize*1024/(512*1));
 				} else {
-					sprintf(teststr,"512,127,16513,%d",sizemb*1024*1024/(512*127));
+					Bit32u total_size_cyl=32765;
+					Bit32u free_size_cyl=(Bit32u)freesize*1024*1024/(512*32);
+					if (free_size_cyl>65534) free_size_cyl=65534;
+					if (total_size_cyl<free_size_cyl) total_size_cyl=free_size_cyl+10;
+					if (total_size_cyl>65534) total_size_cyl=65534;
+					sprintf(teststr,"512,32,%d,%d",total_size_cyl,free_size_cyl);
 				}
 				str_size=teststr;
 			}
@@ -319,6 +390,7 @@ public:
 			label = drive; label += "_FLOPPY";
 			newdrive->dirCache.SetLabel(label.c_str(),iscdrom,true);
 		}
+		if(type == "floppy") incrementFDD();
 		return;
 showusage:
 #if defined (WIN32) || defined(OS2)
@@ -908,11 +980,29 @@ public:
 
 void RESCAN::Run(void) 
 {
-	// Get current drive
+	bool all = false;
+	
 	Bit8u drive = DOS_GetDefaultDrive();
-	if (Drives[drive]) {
-		Drives[drive]->EmptyCache();
+	
+	if(cmd->FindCommand(1,temp_line)) {
+		//-A -All /A /All 
+		if(temp_line.size() >= 2 && (temp_line[0] == '-' ||temp_line[0] =='/')&& (temp_line[1] == 'a' || temp_line[1] =='A') ) all = true;
+		else if(temp_line.size() == 2 && temp_line[1] == ':') {
+			lowcase(temp_line);
+			drive  = temp_line[0] - 'a';
+		}
+	}
+	// Get current drive
+	if (all) {
+		for(Bitu i =0; i<DOS_DRIVES;i++) {
+			if (Drives[i]) Drives[i]->EmptyCache();
+		}
 		WriteOut(MSG_Get("PROGRAM_RESCAN_SUCCESS"));
+	} else {
+		if (drive < DOS_DRIVES && Drives[drive]) {
+			Drives[drive]->EmptyCache();
+			WriteOut(MSG_Get("PROGRAM_RESCAN_SUCCESS"));
+		}
 	}
 }
 
@@ -1026,7 +1116,7 @@ public:
 			if (type=="floppy") {
 				mediaid=0xF0;		
 			} else if (type=="iso") {
-				str_size="650,127,16513,1700";
+				str_size=="2048,1,60000,0";	// ignored, see drive_iso.cpp (AllocationInfo)
 				mediaid=0xF8;		
 				fstype = "iso";
 			} 
@@ -1347,8 +1437,9 @@ void DOS_SetupPrograms(void) {
 	/*Add Messages */
 
 	MSG_Add("PROGRAM_MOUNT_CDROMS_FOUND","CDROMs found: %d\n");
+	MSG_Add("PROGRAM_MOUNT_STATUS_FORMAT","%-5s  %-58s %-12s\n");
 	MSG_Add("PROGRAM_MOUNT_STATUS_2","Drive %c is mounted as %s\n");
-	MSG_Add("PROGRAM_MOUNT_STATUS_1","Current mounted drives are:\n");
+	MSG_Add("PROGRAM_MOUNT_STATUS_1","The currently mounted drives are:\n");
 	MSG_Add("PROGRAM_MOUNT_ERROR_1","Directory %s doesn't exist.\n");
 	MSG_Add("PROGRAM_MOUNT_ERROR_2","%s isn't a directory\n");
 	MSG_Add("PROGRAM_MOUNT_ILL_TYPE","Illegal type %s\n");

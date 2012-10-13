@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: drive_local.cpp,v 1.82 2009-07-18 18:42:55 c2woody Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +40,7 @@ public:
 	Bit16u GetInformation(void);
 	bool UpdateDateTimeFromHost(void);   
 	void FlagReadOnlyMedium(void);
+	void Flush(void);
 private:
 	FILE * fhandle;
 	bool read_only_medium;
@@ -82,9 +82,10 @@ bool localDrive::FileCreate(DOS_File * * file,char * name,Bit16u /*attributes*/)
 bool localDrive::FileOpen(DOS_File * * file,char * name,Bit32u flags) {
 	const char* type;
 	switch (flags&0xf) {
-	case OPEN_READ:type="rb"; break;
-	case OPEN_WRITE:type="rb+"; break;
-	case OPEN_READWRITE:type="rb+"; break;
+	case OPEN_READ:        type = "rb" ; break;
+	case OPEN_WRITE:       type = "rb+"; break;
+	case OPEN_READWRITE:   type = "rb+"; break;
+	case OPEN_READ_NO_MOD: type = "rb" ; break; //No modification of dates. LORD4.07 uses this
 	default:
 		DOS_SetError(DOSERR_ACCESS_CODE_INVALID);
 		return false;
@@ -94,6 +95,22 @@ bool localDrive::FileOpen(DOS_File * * file,char * name,Bit32u flags) {
 	strcat(newname,name);
 	CROSS_FILENAME(newname);
 	dirCache.ExpandName(newname);
+
+	//Flush the buffer of handles for the same file. (Betrayal in Antara)
+	Bit8u i,drive=DOS_DRIVES;
+	localFile *lfp;
+	for (i=0;i<DOS_DRIVES;i++) {
+		if (Drives[i]==this) {
+			drive=i;
+			break;
+		}
+	}
+	for (i=0;i<DOS_FILES;i++) {
+		if (Files[i] && Files[i]->IsOpen() && Files[i]->GetDrive()==drive && Files[i]->IsName(name)) {
+			lfp=dynamic_cast<localFile*>(Files[i]);
+			if (lfp) lfp->Flush();
+		}
+	}
 
 	FILE * hand=fopen(newname,type);
 //	Bit32u err=errno;
@@ -362,8 +379,6 @@ bool localDrive::Rename(char * oldname,char * newname) {
 }
 
 bool localDrive::AllocationInfo(Bit16u * _bytes_sector,Bit8u * _sectors_cluster,Bit16u * _total_clusters,Bit16u * _free_clusters) {
-	/* Always report 100 mb free should be enough */
-	/* Total size is always 1 gb */
 	*_bytes_sector=allocation.bytes_sector;
 	*_sectors_cluster=allocation.sectors_cluster;
 	*_total_clusters=allocation.total_clusters;
@@ -377,9 +392,9 @@ bool localDrive::FileExists(const char* name) {
 	strcat(newname,name);
 	CROSS_FILENAME(newname);
 	dirCache.ExpandName(newname);
-	FILE* Temp=fopen(newname,"rb");
-	if(Temp==NULL) return false;
-	fclose(Temp);
+	struct stat temp_stat;
+	if(stat(newname,&temp_stat)!=0) return false;
+	if(temp_stat.st_mode & S_IFDIR) return false;
 	return true;
 }
 
@@ -539,6 +554,13 @@ bool localFile::UpdateDateTimeFromHost(void) {
 		time=1;date=1;
 	}
 	return true;
+}
+
+void localFile::Flush(void) {
+	if (last_action==WRITE) {
+		fseek(fhandle,ftell(fhandle),SEEK_SET);
+		last_action=NONE;
+	}
 }
 
 

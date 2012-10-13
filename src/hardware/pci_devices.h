@@ -16,34 +16,3 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef DOSBOX_JOYSTICK_H
-#define DOSBOX_JOYSTICK_H
-void JOYSTICK_Enable(Bitu which,bool enabled);
-
-void JOYSTICK_Button(Bitu which,Bitu num,bool pressed);
-
-void JOYSTICK_Move_X(Bitu which,float x);
-
-void JOYSTICK_Move_Y(Bitu which,float y);
-
-bool JOYSTICK_IsEnabled(Bitu which);
-
-bool JOYSTICK_GetButton(Bitu which, Bitu num);
-
-float JOYSTICK_GetMove_X(Bitu which);
-
-float JOYSTICK_GetMove_Y(Bitu which);
-
-enum JoystickType {
-	JOY_NONE,
-	JOY_AUTO,
-	JOY_2AXIS,
-	JOY_4AXIS,
-	JOY_4AXIS_2,
-	JOY_FCS,
-	JOY_CH
-};
-
-extern JoystickType joytype;
-extern bool button_wrapping_enabled;
-#endif

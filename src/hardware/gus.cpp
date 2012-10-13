@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: gus.cpp,v 1.37 2009-09-03 16:03:01 c2woody Exp $ */
 
 #include <string.h>
 #include <iomanip>
@@ -770,7 +769,7 @@ static void MakeTables(void) {
 		vol16bit[i]=(Bit16s)out;
 		out/=1.002709201;		/* 0.0235 dB Steps */
 	}
-	pantable[0]=0;
+	pantable[0] = 4095 << RAMP_FRACT;
 	for (i=1;i<16;i++) {
 		pantable[i]=(Bit32u)(-128.0*(log((double)i/15.0)/log(2.0))*(double)(1 << RAMP_FRACT));
 	}

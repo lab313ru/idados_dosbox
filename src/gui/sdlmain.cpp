@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: sdlmain.cpp,v 1.154 2009-06-01 10:25:51 qbix79 Exp $ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -172,6 +171,8 @@ struct SDL_Block {
 		} window;
 		Bit8u bpp;
 		bool fullscreen;
+		bool lazy_fullscreen;
+		bool lazy_fullscreen_req;
 		bool doublebuf;
 		SCREEN_TYPES type;
 		SCREEN_TYPES want_type;
@@ -229,6 +230,7 @@ extern bool CPU_CycleAutoAdjust;
 //Globals for keyboard initialisation
 bool startup_state_numlock=false;
 bool startup_state_capslock=false;
+
 void GFX_SetTitle(Bit32s cycles,Bits frameskip,bool paused){
 	char title[200]={0};
 	static Bit32s internal_cycles=0;
@@ -236,13 +238,37 @@ void GFX_SetTitle(Bit32s cycles,Bits frameskip,bool paused){
 	if(cycles != -1) internal_cycles = cycles;
 	if(frameskip != -1) internal_frameskip = frameskip;
 	if(CPU_CycleAutoAdjust) {
-		sprintf(title,"DOSBox %s, Cpu speed: max %3d%% cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
+		sprintf(title,"DOSBox %s, CPU speed: max %3d%% cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
 	} else {
-		sprintf(title,"DOSBox %s, Cpu speed: %8d cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
+		sprintf(title,"DOSBox %s, CPU speed: %8d cycles, Frameskip %2d, Program: %8s",VERSION,internal_cycles,internal_frameskip,RunningProgram);
 	}
 
 	if(paused) strcat(title," PAUSED");
 	SDL_WM_SetCaption(title,VERSION);
+}
+
+static unsigned char logo[32*32*4]= {
+#include "dosbox_logo.h"
+};
+static void GFX_SetIcon() {
+#if !defined(MACOSX)
+	/* Set Icon (must be done before any sdl_setvideomode call) */
+	/* But don't set it on OS X, as we use a nicer external icon there. */
+	/* Made into a separate call, so it can be called again when we restart the graphics output on win32 */
+#if WORDS_BIGENDIAN
+	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0xff000000,0x00ff0000,0x0000ff00,0);
+#else
+	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0x000000ff,0x0000ff00,0x00ff0000,0);
+#endif
+	SDL_WM_SetIcon(logos,NULL);
+#endif
+}
+
+
+static void KillSwitch(bool pressed) {
+	if (!pressed)
+		return;
+	throw 1;
 }
 
 static void PauseDOSBox(bool pressed) {
@@ -261,15 +287,22 @@ static void PauseDOSBox(bool pressed) {
 		SDL_WaitEvent(&event);    // since we're not polling, cpu usage drops to 0.
 		switch (event.type) {
 
-			case SDL_QUIT: throw(0); break;
+			case SDL_QUIT: KillSwitch(true); break;
 			case SDL_KEYDOWN:   // Must use Pause/Break Key to resume.
 			case SDL_KEYUP:
-			if(event.key.keysym.sym==SDLK_PAUSE) {
+			if(event.key.keysym.sym == SDLK_PAUSE) {
 
-				paused=false;
+				paused = false;
 				GFX_SetTitle(-1,-1,false);
 				break;
 			}
+#if defined (MACOSX)
+			if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod == KMOD_RMETA || event.key.keysym.mod == KMOD_LMETA) ) {
+				/* On macs, all aps exit when pressing cmd-q */
+				KillSwitch(true);
+				break;
+			} 
+#endif
 		}
 	}
 }
@@ -354,6 +387,16 @@ void GFX_ResetScreen(void) {
 	CPU_Reset_AutoAdjust();
 }
 
+void GFX_ForceFullscreenExit(void) {
+	if (sdl.desktop.lazy_fullscreen) {
+//		sdl.desktop.lazy_fullscreen_req=true;
+		LOG_MSG("GFX LF: invalid screen change");
+	} else {
+		sdl.desktop.fullscreen=false;
+		GFX_ResetScreen();
+	}
+}
+
 static int int_log2 (int val) {
     int log = 0;
     while ((val >>= 1) != 0)
@@ -403,6 +446,16 @@ static SDL_Surface * GFX_SetupSurfaceScaled(Bit32u sdl_flags, Bit32u bpp) {
 		sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley);
 		sdl.surface=SDL_SetVideoMode(sdl.clip.w,sdl.clip.h,bpp,sdl_flags);
 		return sdl.surface;
+	}
+}
+
+void GFX_TearDown(void) {
+	if (sdl.updating)
+		GFX_EndUpdate( 0 );
+
+	if (sdl.blit.surface) {
+		SDL_FreeSurface(sdl.blit.surface);
+		sdl.blit.surface=0;
 	}
 }
 
@@ -465,7 +518,9 @@ dosurface:
 					sdl.using_windib=false;
 				}
 				SDL_InitSubSystem(SDL_INIT_VIDEO);
+				GFX_SetIcon(); //Set Icon again
 				sdl.surface = SDL_SetVideoMode(width,height,bpp,SDL_HWSURFACE);
+				if(sdl.surface) GFX_SetTitle(-1,-1,false); //refresh title.
 			}
 #endif
 			if (sdl.surface == NULL)
@@ -671,6 +726,18 @@ void GFX_CaptureMouse(void) {
         mouselocked=sdl.mouse.locked;
 }
 
+void GFX_UpdateSDLCaptureState(void) {
+	if (sdl.mouse.locked) {
+		SDL_WM_GrabInput(SDL_GRAB_ON);
+		SDL_ShowCursor(SDL_DISABLE);
+	} else {
+		SDL_WM_GrabInput(SDL_GRAB_OFF);
+		if (sdl.mouse.autoenable || !sdl.mouse.autolock) SDL_ShowCursor(SDL_ENABLE);
+	}
+	CPU_Reset_AutoAdjust();
+	GFX_SetTitle(-1,-1,false);
+}
+
 bool mouselocked; //Global variable for mapper
 static void CaptureMouse(bool pressed) {
 	if (!pressed)
@@ -678,12 +745,40 @@ static void CaptureMouse(bool pressed) {
 	GFX_CaptureMouse();
 }
 
+#if defined (WIN32)
+STICKYKEYS stick_keys = {sizeof(STICKYKEYS), 0};
+void sticky_keys(bool restore){
+	static bool inited = false;
+	if (!inited){
+		inited = true;
+		SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &stick_keys, 0);
+	} 
+	if (restore) {
+		SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &stick_keys, 0);
+		return;
+	}
+	//Get current sticky keys layout:
+	STICKYKEYS s = {sizeof(STICKYKEYS), 0};
+	SystemParametersInfo(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS), &s, 0);
+	if ( !(s.dwFlags & SKF_STICKYKEYSON)) { //Not on already
+		s.dwFlags &= ~SKF_HOTKEYACTIVE;
+		SystemParametersInfo(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &s, 0);
+	}
+}
+#endif
+
 void GFX_SwitchFullScreen(void) {
 	sdl.desktop.fullscreen=!sdl.desktop.fullscreen;
 	if (sdl.desktop.fullscreen) {
 		if (!sdl.mouse.locked) GFX_CaptureMouse();
+#if defined (WIN32)
+		sticky_keys(false); //disable sticky keys in fullscreen mode
+#endif
 	} else {
 		if (sdl.mouse.locked) GFX_CaptureMouse();
+#if defined (WIN32)		
+		sticky_keys(true); //restore sticky keys to default state in windowed mode.
+#endif
 	}
 	GFX_ResetScreen();
 }
@@ -691,7 +786,32 @@ void GFX_SwitchFullScreen(void) {
 static void SwitchFullScreen(bool pressed) {
 	if (!pressed)
 		return;
-	GFX_SwitchFullScreen();
+
+	if (sdl.desktop.lazy_fullscreen) {
+//		sdl.desktop.lazy_fullscreen_req=true;
+		LOG_MSG("GFX LF: fullscreen switching not supported");
+	} else {
+		GFX_SwitchFullScreen();
+	}
+}
+
+void GFX_SwitchLazyFullscreen(bool lazy) {
+	sdl.desktop.lazy_fullscreen=lazy;
+	sdl.desktop.lazy_fullscreen_req=false;
+}
+
+void GFX_SwitchFullscreenNoReset(void) {
+	sdl.desktop.fullscreen=!sdl.desktop.fullscreen;
+}
+
+bool GFX_LazyFullscreenRequested(void) {
+	if (sdl.desktop.lazy_fullscreen) return sdl.desktop.lazy_fullscreen_req;
+	return false;
+}
+
+void GFX_RestoreMode(void) {
+	GFX_SetSize(sdl.draw.width,sdl.draw.height,sdl.draw.flags,sdl.draw.scalex,sdl.draw.scaley,sdl.draw.callback);
+	GFX_UpdateSDLCaptureState();
 }
 
 
@@ -727,7 +847,7 @@ bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
 		return true;
 #endif
 	case SCREEN_OVERLAY:
-		SDL_LockYUVOverlay(sdl.overlay);
+		if (SDL_LockYUVOverlay(sdl.overlay)) return false;
 		pixels=(Bit8u *)*(sdl.overlay->pixels);
 		pitch=*(sdl.overlay->pitches);
 		sdl.updating=true;
@@ -905,11 +1025,6 @@ static void GUI_ShutDown(Section * /*sec*/) {
 	if (sdl.desktop.fullscreen) GFX_SwitchFullScreen();
 }
 
-static void KillSwitch(bool pressed) {
-	if (!pressed)
-		return;
-	throw 1;
-}
 
 static void SetPriority(PRIORITY_LEVELS level) {
 
@@ -983,28 +1098,21 @@ static void OutputString(Bitu x,Bitu y,const char * text,Bit32u color,Bit32u col
 	}
 }
 
-static unsigned char logo[32*32*4]= {
-#include "dosbox_logo.h"
-};
 #include "dosbox_splash.h"
 
 //extern void UI_Run(bool);
+void Restart(bool pressed);
+
 static void GUI_StartUp(Section * sec) {
 	sec->AddDestroyFunction(&GUI_ShutDown);
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	sdl.active=false;
 	sdl.updating=false;
 
-#if !defined(MACOSX)
-	/* Set Icon (must be done before any sdl_setvideomode call) */
-	/* But don't set it on OS X, as we use a nicer external icon there. */
-#if WORDS_BIGENDIAN
-	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0xff000000,0x00ff0000,0x0000ff00,0);
-#else
-	SDL_Surface* logos= SDL_CreateRGBSurfaceFrom((void*)logo,32,32,32,128,0x000000ff,0x0000ff00,0x00ff0000,0);
-#endif
-	SDL_WM_SetIcon(logos,NULL);
-#endif
+	GFX_SetIcon();
+
+	sdl.desktop.lazy_fullscreen=false;
+	sdl.desktop.lazy_fullscreen_req=false;
 
 	sdl.desktop.fullscreen=section->Get_bool("fullscreen");
 	sdl.wait_on_error=section->Get_bool("waitonerror");
@@ -1234,6 +1342,7 @@ static void GUI_StartUp(Section * sec) {
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");
 	MAPPER_AddHandler(CaptureMouse,MK_f10,MMOD1,"capmouse","Cap Mouse");
 	MAPPER_AddHandler(SwitchFullScreen,MK_return,MMOD2,"fullscr","Fullscreen");
+	MAPPER_AddHandler(Restart,MK_home,MMOD1|MMOD2,"restart","Restart");
 #if C_DEBUG
 	/* Pause binds with activate-debugger */
 #else
@@ -1309,6 +1418,10 @@ void GFX_LosingFocus(void) {
 	MAPPER_LosingFocus();
 }
 
+bool GFX_IsFullscreen(void) {
+	return sdl.desktop.fullscreen;
+}
+
 void GFX_Events() {
 	SDL_Event event;
 #if defined (REDUCE_JOYSTICK_POLLING)
@@ -1334,8 +1447,7 @@ void GFX_Events() {
 #ifdef WIN32
 						if (sdl.desktop.fullscreen) {
 							VGA_KillDrawing();
-							sdl.desktop.fullscreen=false;
-							GFX_ResetScreen();
+							GFX_ForceFullscreenExit();
 						}
 #endif
 						GFX_CaptureMouse();
@@ -1417,6 +1529,15 @@ void GFX_Events() {
 			if (event.key.keysym.sym==SDLK_RALT) sdl.raltstate = event.key.type;
 			if (((event.key.keysym.sym==SDLK_TAB)) &&
 				((sdl.laltstate==SDL_KEYDOWN) || (sdl.raltstate==SDL_KEYDOWN))) break;
+#endif
+#if defined (MACOSX)			
+		case SDL_KEYDOWN:
+		case SDL_KEYUP:
+			/* On macs CMD-Q is the default key to close an application */
+			if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod == KMOD_RMETA || event.key.keysym.mod == KMOD_LMETA) ) {
+				KillSwitch(true);
+				break;
+			} 
 #endif
 		default:
 			void MAPPER_CheckEvent(SDL_Event * event);
@@ -1586,6 +1707,32 @@ static void launcheditor() {
 	printf("can't find editor(s) specified at the command line.\n");
 	exit(1);
 }
+#if C_DEBUG
+extern void DEBUG_ShutDown(Section * /*sec*/);
+#endif
+
+void restart_program(std::vector<std::string> & parameters) {
+	char** newargs = new char* [parameters.size()+1];
+	// parameter 0 is the executable path
+	// contents of the vector follow
+	// last one is NULL
+	for(Bitu i = 0; i < parameters.size(); i++) newargs[i]=(char*)parameters[i].c_str();
+	newargs[parameters.size()] = NULL;
+	SDL_CloseAudio();
+	SDL_Delay(50);
+	SDL_Quit();
+#if C_DEBUG
+	// shutdown curses
+	DEBUG_ShutDown(NULL);
+#endif
+
+	execvp(newargs[0], newargs);
+	free(newargs);
+}
+void Restart(bool pressed) { // mapper handler
+	restart_program(control->startup_params);
+}
+
 static void launchcaptures(std::string const& edit) {
 	std::string path,file;
 	Section* t = control->GetSection("dosbox");
@@ -1665,7 +1812,6 @@ static void erasemapperfile() {
 }
 
 
-
 //extern void UI_Init(void);
 int main(int argc, char* argv[]) {
 	try {
@@ -1683,7 +1829,7 @@ int main(int argc, char* argv[]) {
 		if(control->cmdline->FindExist("-resetconf")) eraseconfigfile();
 		if(control->cmdline->FindExist("-erasemapper")) erasemapperfile();
 		if(control->cmdline->FindExist("-resetmapper")) erasemapperfile();
-
+		
 		/* Can't disable the console with debugger enabled */
 #if defined(WIN32) && !(C_DEBUG)
 		if (control->cmdline->FindExist("-noconsole")) {
@@ -1708,7 +1854,7 @@ int main(int argc, char* argv[]) {
 #endif  //defined(WIN32) && !(C_DEBUG)
 		if (control->cmdline->FindExist("-version") ||
 		    control->cmdline->FindExist("--version") ) {
-			printf("\nDOSBox version %s, copyright 2002-2010 DOSBox Team.\n\n",VERSION);
+			printf("\nDOSBox version %s, copyright 2002-2011 DOSBox Team.\n\n",VERSION);
 			printf("DOSBox is written by the DOSBox Team (See AUTHORS file))\n");
 			printf("DOSBox comes with ABSOLUTELY NO WARRANTY.  This is free software,\n");
 			printf("and you are welcome to redistribute it under certain conditions;\n");
@@ -1736,11 +1882,15 @@ int main(int argc, char* argv[]) {
 
 	/* Display Welcometext in the console */
 	LOG_MSG("DOSBox version %s",VERSION);
-	LOG_MSG("Copyright 2002-2010 DOSBox Team, published under GNU GPL.");
+	LOG_MSG("Copyright 2002-2011 DOSBox Team, published under GNU GPL.");
 	LOG_MSG("---");
 
 	/* Init SDL */
 #if SDL_VERSION_ATLEAST(1, 2, 14)
+	/* Or debian/ubuntu with older libsdl version as they have done this themselves, but then differently.
+	 * with this variable they will work correctly. I've only tested the 1.2.14 behaviour against the windows version
+	 * of libsdl
+	 */
 	putenv(const_cast<char*>("SDL_DISABLE_LOCK_KEYS=1"));
 #endif
 	if ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_CDROM
@@ -1790,15 +1940,16 @@ int main(int argc, char* argv[]) {
 
 	/* Parse configuration files */
 	std::string config_file,config_path;
-	bool parsed_anyconfigfile = false;
-	//First Parse -userconf
+	Cross::GetPlatformConfigDir(config_path);
+	
+	//First parse -userconf
 	if(control->cmdline->FindExist("-userconf",true)){
 		config_file.clear();
 		Cross::GetPlatformConfigDir(config_path);
 		Cross::GetPlatformConfigName(config_file);
 		config_path += config_file;
-		if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
-		if(!parsed_anyconfigfile) {
+		control->ParseConfigFile(config_path.c_str());
+		if(!control->configfiles.size()) {
 			//Try to create the userlevel configfile.
 			config_file.clear();
 			Cross::CreatePlatformConfigDir(config_path);
@@ -1807,29 +1958,29 @@ int main(int argc, char* argv[]) {
 			if(control->PrintConfig(config_path.c_str())) {
 				LOG_MSG("CONFIG: Generating default configuration.\nWriting it to %s",config_path.c_str());
 				//Load them as well. Makes relative paths much easier
-				if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
+				control->ParseConfigFile(config_path.c_str());
 			}
 		}
 	}
 
-	//Second parse -conf entries
-	while(control->cmdline->FindString("-conf",config_file,true))
-		if (control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
+	//Second parse -conf switches
+	while(control->cmdline->FindString("-conf",config_file,true)) {
+		if(!control->ParseConfigFile(config_file.c_str())) {
+			// try to load it from the user directory
+			control->ParseConfigFile((config_path + config_file).c_str());
+		}
+	}
+	// if none found => parse localdir conf
+	if(!control->configfiles.size()) control->ParseConfigFile("dosbox.conf");
 
-	//if none found => parse localdir conf
-	config_file = "dosbox.conf";
-	if (!parsed_anyconfigfile && control->ParseConfigFile(config_file.c_str())) parsed_anyconfigfile = true;
-
-	//if none found => parse userlevel conf
-	if(!parsed_anyconfigfile) {
+	// if none found => parse userlevel conf
+	if(!control->configfiles.size()) {
 		config_file.clear();
-		Cross::GetPlatformConfigDir(config_path);
 		Cross::GetPlatformConfigName(config_file);
-		config_path += config_file;
-		if(control->ParseConfigFile(config_path.c_str())) parsed_anyconfigfile = true;
+		control->ParseConfigFile((config_path + config_file).c_str());
 	}
 
-	if(!parsed_anyconfigfile) {
+	if(!control->configfiles.size()) {
 		//Try to create the userlevel configfile.
 		config_file.clear();
 		Cross::CreatePlatformConfigDir(config_path);
@@ -1856,7 +2007,7 @@ int main(int argc, char* argv[]) {
 		Section_prop * sdl_sec=static_cast<Section_prop *>(control->GetSection("sdl"));
 
 		if (control->cmdline->FindExist("-fullscreen") || sdl_sec->Get_bool("fullscreen")) {
-			if(!sdl.desktop.fullscreen) { //only switch if not allready in fullscreen
+			if(!sdl.desktop.fullscreen) { //only switch if not already in fullscreen
 				GFX_SwitchFullScreen();
 			}
 		}
@@ -1868,6 +2019,9 @@ int main(int argc, char* argv[]) {
 		control->StartUp();
 		/* Shutdown everything */
 	} catch (char * error) {
+#if defined (WIN32)
+		sticky_keys(true);
+#endif
 		GFX_ShowMsg("Exit to error: %s",error);
 		fflush(NULL);
 		if(sdl.wait_on_error) {
@@ -1886,11 +2040,17 @@ int main(int argc, char* argv[]) {
 		;//nothing pressed killswitch
 	}
 	catch(...){
+#if defined (WIN32)
+		sticky_keys(true);
+#endif
 		//Force visible mouse to end user. Somehow this sometimes doesn't happen
 		SDL_WM_GrabInput(SDL_GRAB_OFF);
 		SDL_ShowCursor(SDL_ENABLE);
 		throw;//dunno what happened. rethrow for sdl to catch
 	}
+#if defined (WIN32)
+	sticky_keys(true); //Might not be needed if the shutdown function switches to windowed mode, but it doesn't hurt
+#endif 
 	//Force visible mouse to end user. Somehow this sometimes doesn't happen
 	SDL_WM_GrabInput(SDL_GRAB_OFF);
 	SDL_ShowCursor(SDL_ENABLE);

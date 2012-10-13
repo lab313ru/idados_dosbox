@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2010  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-/* $Id: dev_con.h,v 1.35 2009-05-27 09:15:41 qbix79 Exp $ */
 
 #include "dos_inc.h"
 #include "../ints/int10.h"
@@ -38,7 +37,7 @@ public:
 private:
 	Bit8u readcache;
 	Bit8u lastwrite;
-	struct ansi { /* should create a constructor which fills them with the appriorate values */
+	struct ansi { /* should create a constructor, which would fill them with the appropriate values */
 		bool esc;
 		bool sci;
 		bool enabled;
@@ -129,7 +128,7 @@ bool device_CON::Write(Bit8u * data,Bit16u * size) {
 				count++;
 				continue;
 			} else { 
-				/* Some sort of "hack" now that \n doesn't set col to 0 (int10_char.cpp old chessgame) */
+				/* Some sort of "hack" now that '\n' doesn't set col to 0 (int10_char.cpp old chessgame) */
 				if((data[count] == '\n') && (lastwrite != '\r')) INT10_TeletypeOutputAttr('\r',ansi.attr,ansi.enabled);
 				/* pass attribute only if ansi is enabled */
 				INT10_TeletypeOutputAttr(data[count],ansi.attr,ansi.enabled);
