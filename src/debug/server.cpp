@@ -181,12 +181,12 @@ static int handle_single_session(rpc_server_t *server)
   lprintf("=========================================================\n"
     "Accepting incoming connection...\n");
 
-  qstring open = prepare_rpc_packet(RPC_OPEN);
-  append_long(open, IDD_INTERFACE_VERSION);
-  append_long(open, DEBUGGER_ID);
-  append_long(open, sizeof(ea_t));
+  bytevec_t open = prepare_rpc_packet(RPC_OPEN);
+  append_dd(open, IDD_INTERFACE_VERSION);
+  append_dd(open, DEBUGGER_ID);
+  append_dd(open, sizeof(ea_t));
 
-  rpc_packet_t *rp = server->process_request(open, PRF_LOGIN|PRF_DONT_POLL);
+  rpc_packet_t *rp = server->process_request(open, true);
 
   if (rp == NULL)
   {
@@ -224,7 +224,7 @@ static int handle_single_session(rpc_server_t *server)
     server->has_pending_event = false;
 
     open = prepare_rpc_packet(RPC_OK);
-    append_long(open, ok);
+    append_dd(open, ok);
     server->send_request(open);
 
     if (ok)
@@ -448,8 +448,12 @@ bool DEBUG_RemoteDataReady(void) //FIXME need to rework this.
   return false;
 }
 
+idaman callui_t dummy_callui(ui_notification_t what,...);
+
+
 int idados_start_session()
 {
+    callui = &dummy_callui;
     sockaddr_in sa;
     socklen_t salen = sizeof(sa);
     SOCKET rpc_socket = accept(listen_socket, (sockaddr *)&sa, &salen);
@@ -483,14 +487,14 @@ int idados_handle_command()
 
   if(ret)
   {
-   qstring cmd;
+   bytevec_t cmd;
    dosbox_debmod_t *dm = (dosbox_debmod_t *)g_idados_server->get_debugger_instance();
    
    //g_idados_server->poll_required = dm->events.empty() == true ? false : true;
    //g_idados_server->poll_required = false;
 //printf("OK!\n");
    dm->dosbox_step_ret = 0;
-   rpc_packet_t *packet = g_idados_server->process_request(cmd, PRF_DONT_POLL|PRF_DONT_BLOCK);
+   rpc_packet_t *packet = g_idados_server->process_request(cmd); // FIXME: "must_login" argument?
    if (packet != NULL)
      qfree(packet);
 
@@ -528,7 +532,8 @@ void idados_hit_breakpoint(PhysPt addr)
 
   dosbox_debmod_t *dm = (dosbox_debmod_t *)g_idados_server->get_debugger_instance();
   
-  g_idados_server->poll_required = true;
+  // FIXME: poll_required is gone. Replace it by anything?
+  //g_idados_server->poll_required = true;
   dm->hit_breakpoint(addr);
 
   idados_stopped();

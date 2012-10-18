@@ -8,6 +8,14 @@
 #define USE_DANGEROUS_FUNCTIONS
 #include "pro.h"
 
+bool under_debugger = false;
+
+idaman THREAD_SAFE NORETURN void ida_export interr(int code)
+{
+	fprintf(stderr, "Internal error: %d\n", code);
+	exit(-1);
+}
+
 idaman void *ida_export qalloc( size_t size )
 {
   return malloc(size);
@@ -22,6 +30,20 @@ idaman void *ida_export qrealloc_or_throw(void *ptr, size_t size)
 {
   return realloc(ptr, size);
 }
+
+idaman THREAD_SAFE void *ida_export qvector_reserve(void *vec, void *old, size_t cnt, size_t elsize)
+{
+  // HACK: Template type is unknown, but shouldn't matter for accessing v->alloc
+  qvector<int>* v = (qvector<int>*)(vec);
+  if (cnt > v->alloc) {
+    void *ptr = realloc(old, cnt*elsize);
+    v->alloc = cnt;
+    return ptr;
+  } else {
+    return old;
+  }
+}
+
 
 idaman void  ida_export qfree( void *alloc )
 {
@@ -48,7 +70,7 @@ idaman const char *ida_export qerrstr(int code=-1)
 
 idaman char *ida_export winerr(int code)
 {
-  return ""; //FIXME
+  return ""; //FIXME: String constant returned as char*
 }
 
 idaman int ida_export qvprintf(const char *fmt, va_list va)
@@ -324,7 +346,7 @@ idaman uint32 ida_export calc_file_crc32(linput_t *fp)
   return 0;
 }
 
-idaman uint32 ida_export efilelength(FILE *fp)
+idaman uint32 ida_export qfsize(FILE *fp)
 {
  uint32 cur_pos = ftell(fp);
  uint32 len;
@@ -337,6 +359,14 @@ idaman uint32 ida_export efilelength(FILE *fp)
 
  return len;  
 }
+
+idaman bool  ida_export qfileexist(const char *file)
+{
+  // CHECKME
+  struct stat buf;
+  return (stat(file, &buf) == 0);
+}
+
 
 idaman FILE *ida_export fopenWB(const char *file)
 {
@@ -356,11 +386,13 @@ union callui_t          // Return codes (size of this type should be 4 bytes at 
 
 enum ui_notification_t
 {
+ ui_msg = 23,
  ui_temp = 1000
 };
 
-idaman callui_t ida_export_data /*idaapi*/ callui(ui_notification_t what, va_list va)
+idaman callui_t ida_export_data /*idaapi*/ dummy_callui(ui_notification_t what, ...)
 {
+  // TODO: Maybe implement at least ui_msg?
   callui_t i;
   i.padding = 1;
   return i;
@@ -400,3 +432,13 @@ idaman bool ida_export relocate_relobj(struct relobj_t *_relobj, ea_t ea, bool m
 {
   assert(false);
 }
+
+idaman void *ida_export launch_process(
+        const launch_process_params_t &lpp,
+        qstring *errbuf)
+{
+  assert(false);
+}
+
+callui_t (idaapi*callui)(ui_notification_t what,...);
+
