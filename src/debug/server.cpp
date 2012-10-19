@@ -450,6 +450,26 @@ bool DEBUG_RemoteDataReady(void) //FIXME need to rework this.
 
 idaman callui_t dummy_callui(ui_notification_t what,...);
 
+class dosbox_rpc_server_t : public rpc_server_t
+{
+  public:
+    dosbox_rpc_server_t(SOCKET rpc_socket) : rpc_server_t(rpc_socket) { }
+    virtual int poll_events(int timeout_ms);
+};
+
+int dosbox_rpc_server_t::poll_events(int timeout_ms)
+{
+  int code = rpc_server_t::poll_events(timeout_ms);
+  // HACK: poll_events sets poll_debug_events to true if there were no
+  // packets. We treat this as an error condition so that the event
+  // handling loop aborts, and control returns to dosbox.
+  if (poll_debug_events)
+    return -1;
+  return code;
+}
+
+
+
 
 int idados_start_session()
 {
@@ -470,7 +490,7 @@ int idados_start_session()
     }
 #endif // defined(__LINUX__) && defined(LIBWRAP)
 
-    g_idados_server = new rpc_server_t(rpc_socket);
+    g_idados_server = new dosbox_rpc_server_t(rpc_socket);
     g_idados_server->verbose = true;
     g_idados_server->set_debugger_instance(create_debug_session());
     dosbox_debmod_t *dm = (dosbox_debmod_t *)g_idados_server->get_debugger_instance();
