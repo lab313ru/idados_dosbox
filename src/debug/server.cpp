@@ -85,12 +85,38 @@ int for_all_debuggers(debmod_visitor_t &v)
 {
   return g_global_server == NULL ? 0: v.visit(g_global_server->get_debugger_instance());
 }
+
+bool srv_lock_begin(void) { return true; }
+bool srv_lock_end(void) { return true; }
+bool srv_lock_free(void) { return true; }
+
+
 #else
 
 typedef std::map<rpc_server_t *, qthread_t> rpc_server_list_t;
-static rpc_server_list_t clients_list;
+rpc_server_list_t clients_list;
 
 qmutex_t g_lock = NULL;
+
+
+//--------------------------------------------------------------------------
+bool srv_lock_begin(void)
+{
+  return qmutex_lock(g_lock);
+}
+
+//--------------------------------------------------------------------------
+bool srv_lock_end(void)
+{
+  return qmutex_unlock(g_lock);
+}
+
+//--------------------------------------------------------------------------
+static inline bool srv_lock_free(void)
+{
+  return qmutex_free(g_lock);
+}
+
 
 // perform an action (func) on all debuggers
 int for_all_debuggers(debmod_visitor_t &v)
@@ -449,6 +475,14 @@ bool DEBUG_RemoteDataReady(void) //FIXME need to rework this.
 }
 
 idaman callui_t dummy_callui(ui_notification_t what,...);
+idaman callui_t ida_export_data /*idaapi*/ dummy_callui(ui_notification_t what, ...)
+{
+  // TODO: Maybe implement at least ui_msg?
+  callui_t i;
+  i.cnd = true;
+  return i;
+}
+
 
 class dosbox_rpc_server_t : public rpc_server_t
 {

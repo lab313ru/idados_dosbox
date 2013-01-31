@@ -49,7 +49,7 @@ using namespace std;
 #include "keyboard.h"
 #include "setup.h"
 
-#include "server.h" //ida interface functions.
+#include "server2.h" //ida interface functions.
 
 #ifdef WIN32
 void WIN32_Console();

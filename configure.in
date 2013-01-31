@@ -270,6 +270,8 @@ if test x$ida = xyes; then
   fi
   IDA_PLUGIN=$ida_plugin
   AC_SUBST(IDA_PLUGIN)
+  IDA_LDADD="-L$with_ida_sdk/bin -lida"
+  AC_SUBST(IDA_LDADD)
 fi
 
 
