@@ -1,103 +1,65 @@
 /*
-       IDA Pro remote debugger server
+       IDA remote debugger server
 */
 
+#include "server.h"
+#include "dosbox_debmod.h"
+
+// DOSBox headers
 #include "dosbox.h"
 #include "mem.h"
-
-#include <pro.h>
-#include <fpro.h>
-#ifndef UNDER_CE
-#  include <signal.h>
-#endif
-
-#include <area.hpp>
-#include <idd.hpp>
-#include <map>
-#include <algorithm>
-
-#ifdef __NT__
-//#  ifndef SIGHUP
-//#    define SIGHUP 1
-//#  endif
-#  if defined(__AMD64__)
-#    define SYSTEM "Windows64"
-#  else
-#    define SYSTEM "Windows32"
-#  endif
-#  ifndef USE_ASYNC
-#    define socklen_t int
-#  endif
-#else   // not NT, i.e. UNIX
-#  if defined(__LINUX__)
-#    define SYSTEM "Linux"
-#  elif defined(__MAC__)
-#    define SYSTEM "Mac OS X"
-#  else
-#    error "Unknown platform"
-#  endif
-
-#  include <sys/socket.h>
-#  include <netinet/in.h>
-#  define SOCKET intptr_t
-#  define INVALID_SOCKET (-1)
-#  define SOCKET_ERROR   (-1)
-#  define closesocket(s)           close(s)
-#  ifdef LIBWRAP
-extern "C" const char *check_connection(int);
-#  endif // LIBWRAP
-#endif // !__NT__
-
-#  define __SINGLE_THREADED_SERVER__
-#  define DEBUGGER_ID    DEBUGGER_ID_X86_DOSBOX_EMULATOR
-
-#ifdef UNDER_CE
-#  include "async.h"
-#  ifndef __SINGLE_THREADED_SERVER__
-#    define __SINGLE_THREADED_SERVER__
-#  endif
-#else
-#  include "tcpip.h"
-#endif
-
-#ifdef __SINGLE_THREADED_SERVER__
-#  define __SERVER_TYPE__ "ST"
-#else
-#  define __SERVER_TYPE__ "MT"
-#endif
-
-#include "debmod.h"
-#include "rpc_hlp.h"
-#include "rpc_server.h"
-#include "dosbox_debmod.h"
+rpc_server_t *g_idados_server = NULL;
+static  bool g_server_running = false;
 
 //--------------------------------------------------------------------------
 // SERVER GLOBAL VARIABLES
 static const char *server_password = NULL;
-static  bool verbose = false;
-static  bool g_server_running = false;
-//--------------------------------------------------------------------------
+static bool verbose = false;
+static bool keep_broken_connections = false;
+
 #ifdef __SINGLE_THREADED_SERVER__
 
-rpc_server_t *g_global_server = NULL;
+static bool init_lock(void) { return true; }
+bool lock_begin(void) { return true; }
+bool lock_end(void) { return true; }
 
-int for_all_debuggers(debmod_visitor_t &v)
-{
-  return g_global_server == NULL ? 0: v.visit(g_global_server->get_debugger_instance());
-}
-
+static inline bool srv_lock_init(void) { return true; }
 bool srv_lock_begin(void) { return true; }
 bool srv_lock_end(void) { return true; }
-bool srv_lock_free(void) { return true; }
-
+static inline bool srv_lock_free(void) { return true; }
 
 #else
 
-typedef std::map<rpc_server_t *, qthread_t> rpc_server_list_t;
-rpc_server_list_t clients_list;
+static qmutex_t g_mutex = NULL;
 
+//--------------------------------------------------------------------------
+static bool init_lock(void)
+{
+  g_mutex = qmutex_create();
+  return g_mutex != NULL;
+}
+
+//--------------------------------------------------------------------------
+bool lock_begin(void)
+{
+  return qmutex_lock(g_mutex);
+}
+
+//--------------------------------------------------------------------------
+bool lock_end(void)
+{
+  return qmutex_unlock(g_mutex);
+}
+
+//--------------------------------------------------------------------------
 qmutex_t g_lock = NULL;
 
+//--------------------------------------------------------------------------
+static inline bool srv_lock_init(void)
+{
+  g_lock = qmutex_create();
+  return g_lock != NULL;
+}
 
 //--------------------------------------------------------------------------
 bool srv_lock_begin(void)
@@ -117,12 +79,18 @@ static inline bool srv_lock_free(void)
   return qmutex_free(g_lock);
 }
 
+#endif
 
+//--------------------------------------------------------------------------
+rpc_server_list_t clients_list;
+rpc_server_t *g_global_server = NULL;
+
+//--------------------------------------------------------------------------
 // perform an action (func) on all debuggers
 int for_all_debuggers(debmod_visitor_t &v)
 {
   int code = 0;
-  qmutex_lock(g_lock);
+  srv_lock_begin();
   {
     rpc_server_list_t::iterator it;
     for ( it=clients_list.begin(); it != clients_list.end(); ++it )
@@ -131,17 +99,10 @@ int for_all_debuggers(debmod_visitor_t &v)
       if ( code != 0 )
         break;
     }
-  } qmutex_unlock(g_lock);
+  } srv_lock_end();
   return code;
 }
 
-#endif
-
-#ifndef USE_ASYNC
-
-
-static SOCKET listen_socket = INVALID_SOCKET;
-static rpc_server_t *g_idados_server = NULL;
 
 //--------------------------------------------------------------------------
 void neterr(idarpc_stream_t *irs, const char *module)
@@ -151,32 +112,42 @@ void neterr(idarpc_stream_t *irs, const char *module)
   exit(1);
 }
 
+static SOCKET listen_socket = INVALID_SOCKET;
+
+
+// Set this variable before generating SIGINT for internal purposes
+bool ignore_sigint = false;
+
 //--------------------------------------------------------------------------
-static void NT_CDECL shutdown_gracefully()
+static void NT_CDECL shutdown_gracefully(int signum)
 {
-
-#ifdef __SINGLE_THREADED_SERVER__
-
-  if ( g_global_server != NULL )
+  if ( signum == SIGINT && ignore_sigint )
   {
-    debmod_t *d = g_global_server->get_debugger_instance();
-    if ( d != NULL )
-      d->dbg_exit_process();
-    g_global_server->term_irs();
+    ignore_sigint = false;
+    return;
   }
+
+#if 0
+#if defined(__NT__) || defined(__ARM__) // strsignal() is not available
+  qeprintf("got signal #%d, terminating\n", signum);
 #else
-  qmutex_lock(g_lock);
+  qeprintf("%s: terminating the server\n", strsignal(signum));
+#endif
+#endif
+
+  srv_lock_begin();
 
   for (rpc_server_list_t::iterator it = clients_list.begin(); it != clients_list.end();++it)
   {
     rpc_server_t *server = it->first;
+#ifndef __SINGLE_THREADED_SERVER__
     qthread_t thr = it->second;
 
     // free thread
-    if (thr != NULL)
+    if ( thr != NULL )
       qthread_free(thr);
-
-    if (server == NULL || server->irs == NULL)
+#endif
+    if ( server == NULL || server->irs == NULL )
       continue;
 
     debmod_t *d = server->get_debugger_instance();
@@ -187,150 +158,143 @@ static void NT_CDECL shutdown_gracefully()
   }
 
   clients_list.clear();
-
-  qmutex_unlock(g_lock);
-
-  qmutex_free(g_lock);
-
-#endif
+  srv_lock_end();
+  srv_lock_free();
 
   if ( listen_socket != INVALID_SOCKET )
     closesocket(listen_socket);
 
   term_subsystem();
+  //_exit(1);
 }
-#endif
 
 //--------------------------------------------------------------------------
 static int handle_single_session(rpc_server_t *server)
 {
+  static int s_sess_id = 1;
+  int sid = s_sess_id++;
+
+  char peername[MAXSTR];
+  if ( !irs_peername(server->irs, peername, sizeof(peername), false) )
+    qstrncpy(peername, "(unknown)", sizeof(peername));
   lprintf("=========================================================\n"
-    "Accepting incoming connection...\n");
+          "[%d] Accepting connection from %s...\n", sid, peername);
 
-  bytevec_t open = prepare_rpc_packet(RPC_OPEN);
-  append_dd(open, IDD_INTERFACE_VERSION);
-  append_dd(open, DEBUGGER_ID);
-  append_dd(open, sizeof(ea_t));
+  bytevec_t req = prepare_rpc_packet(RPC_OPEN);
+  append_dd(req, IDD_INTERFACE_VERSION);
+  append_dd(req, DEBUGGER_ID);
+  append_dd(req, sizeof(ea_t));
 
-  rpc_packet_t *rp = server->process_request(open, true);
+  rpc_packet_t *rp = server->process_request(req, true);
 
-  if (rp == NULL)
+  bool handle_request = true;
+  bool send_response  = true;
+  bool ok;
+  if ( rp == NULL )
   {
-    lprintf("Could not establish the connection\n");
-
-    delete server;
-    return 0;
+    lprintf("[%d] Could not establish the connection\n", sid);
+    handle_request = false;
+    send_response  = false;
   }
 
-  const uchar *answer = (uchar *)(rp+1);
-  const uchar *end = answer + rp->length;
-  bool send_response = true;
+  if ( handle_request )
+  {
+    // Answer is beyond the rpc_packet_t buffer
+    const uchar *answer = (uchar *)(rp+1);
+    const uchar *end = answer + rp->length;
 
-  bool ok = extract_long(&answer, end);
-  if ( !ok )
-  {
-    lprintf("Incompatible IDA Pro version\n");
-    send_response = false;
-  }
-  else if ( server_password != NULL )
-  {
-    char *pass = extract_str(&answer, end);
-    if ( strcmp(pass, server_password) != '\0' )
+    ok = extract_long(&answer, end);
+    if ( !ok )
     {
-      lprintf("Bad password\n");
-      ok = false;
+      lprintf("[%d] Incompatible IDA version\n", sid);
+      send_response = false;
     }
-  }
+    else if ( server_password != NULL )
+    {
+      char *pass = extract_str(&answer, end);
+      if ( strcmp(pass, server_password) != '\0' )
+      {
+        lprintf("[%d] Bad password\n", sid);
+        ok = false;
+      }
+    }
 
-  qfree(rp);
+    qfree(rp);
+  }
 
   if ( send_response )
   {
-    server->poll_debug_events = false;
-    server->has_pending_event = false;
+    req = prepare_rpc_packet(RPC_OK);
+    append_dd(req, ok);
+    server->send_request(req);
 
-    open = prepare_rpc_packet(RPC_OK);
-    append_dd(open, ok);
-    server->send_request(open);
-
-    if (ok)
+    if ( ok )
     {
       return 1;
-
-//      qstring cmd;
-//      rpc_packet_t *packet = server->process_request(cmd, PRF_POLL);
-//      if (packet != NULL)
-//        qfree(packet);
+#if 0
+      // the main loop: handle client requests until it drops the connection
+      // or sends us RPC_OK (see rpc_debmod_t::close_remote)
+      bytevec_t empty;
+      rpc_packet_t *packet = server->process_request(empty);
+      if ( packet != NULL )
+        qfree(packet);
+#endif
     }
   }
-/*
-  server->network_error_code = 0;
-
-  lprintf("Closing incoming connection...\n");
-
-  server->term_irs();
-*/
- return 0;
-}
-
-int thread_handle_session(void *ctx)
-{
-  rpc_server_t *server = (rpc_server_t *)ctx;
-  static int s_sess_id = 1;
-  int sess_id = s_sess_id++;
-
-  lprintf("session %d entered\n", sess_id);
-  handle_single_session(server);
-  lprintf("session %d exiting\n", sess_id);
 
   return 0;
 }
 
-int handle_session(rpc_server_t *server)
+//--------------------------------------------------------------------------
+int idaapi thread_handle_session(void *ctx)
 {
-  bool ret;
-  g_global_server = server;
-  ret = handle_single_session(server);
-  g_global_server = NULL;
-
-  return ret;
+  rpc_server_t *server = (rpc_server_t *)ctx;
+  handle_single_session(server);
+  return 0;
 }
 
-/*
 //--------------------------------------------------------------------------
-// debugger remote server - TCP/IP mode
-int NT_CDECL main(int argc, char *argv[])
+int handle_session(rpc_server_t *server)
 {
-  int port_number = DEBUGGER_PORT_NUMBER;
-  lprintf("IDA " SYSTEM " remote debug server(" __SERVER_TYPE__ "). Version 1.%d. Copyright HexRays 2004-2009\n", IDD_INTERFACE_VERSION);
-  while ( argc > 1 && (argv[1][0] == '-' || argv[1][0] == '/'))
-  {
-    switch ( argv[1][1] )
-    {
-    case 'p':
-      port_number = atoi(&argv[1][2]);
-      break;
-    case 'P':
-      server_password = argv[1] + 2;
-      break;
-    case 'v':
-      verbose = true;
-      break;
-    default:
-      error("usage: ida_remote [switches]\n"
-        "  -p...  port number\n"
-        "  -P...  password\n"
-        "  -v     verbose\n");
-    }
-    argv++;
-    argc--;
-  }
+#ifndef __SINGLE_THREADED_SERVER__
+  qthread_t t = qthread_create(thread_handle_session, (void *)server);
+  bool run_handler = false;
+#else
+  bool t = true;
+  bool run_handler = true;
+#endif
+
+  // Add the session to the list
+  srv_lock_begin();
+  clients_list[server] = t;
+  g_global_server = server;
+  srv_lock_end();
+
+  if ( run_handler )
+    return handle_single_session(server);
+
+  return 0;
+}
+
+//--------------------------------------------------------------------------
+bool are_broken_connections_supported(void)
+{
+  return dosbox_debmod_t::reuse_broken_connections;
+}
+
+
+
+int idados_init()
+{
+#ifdef ENABLE_LOWCNDS
+  init_idc();
+#endif
 
   // call the debugger module to initialize its subsystem once
-  if (
-    !init_subsystem()
+  if ( !init_lock()
+    || !init_subsystem()
 #ifndef __SINGLE_THREADED_SERVER__
-    || ((g_lock = qmutex_create())== NULL)
+    || !srv_lock_init()
 #endif
     )
   {
@@ -338,83 +302,16 @@ int NT_CDECL main(int argc, char *argv[])
     return -1;
   }
 
-#ifndef __NT__
-  signal(SIGHUP, shutdown_gracefully);
-#endif
+  bool reuse_conns = are_broken_connections_supported();
+  int port_number = DEBUGGER_PORT_NUMBER;
+
+#if 0
+  // TODO: Should we replace this by atexit or similar?
   signal(SIGINT, shutdown_gracefully);
   signal(SIGTERM, shutdown_gracefully);
   signal(SIGSEGV, shutdown_gracefully);
   //  signal(SIGPIPE, SIG_IGN);
-
-  if ( !init_irs_layer() )
-  {
-    neterr(NULL, "init_sockets");
-  }
-
-  listen_socket = socket(AF_INET, SOCK_STREAM, 0);
-
-  if ( listen_socket == -1 )
-    neterr(NULL, "socket");
-
-  setup_irs((idarpc_stream_t*)listen_socket);
-
-  struct sockaddr_in sa;
-  memset(&sa, 0, sizeof(sa));
-  sa.sin_family = AF_INET;
-  sa.sin_port   = qhtons(short(port_number));
-
-  if ( bind(listen_socket, (sockaddr *)&sa, sizeof(sa)) == SOCKET_ERROR )
-    neterr((idarpc_stream_t *)listen_socket, "bind");
-
-  if ( listen(listen_socket, SOMAXCONN) == SOCKET_ERROR )
-    neterr((idarpc_stream_t *)listen_socket, "listen");
-
-  lprintf("Listening on port #%u...\n", port_number);
-
-  while ( true )
-  {
-    sockaddr_in sa;
-    socklen_t salen = sizeof(sa);
-    SOCKET rpc_socket = accept(listen_socket, (sockaddr *)&sa, &salen);
-    if ( rpc_socket == -1 )
-      neterr((idarpc_stream_t *)listen_socket, "accept");
-#if defined(__LINUX__) && defined(LIBWRAP)
-    const char *p;
-    if((p = check_connection(rpc_socket)) != NULL) {
-      fprintf(stderr,
-        "ida-server CONNECTION REFUSED from %s (tcp_wrappers)\n", p);
-      shutdown(rpc_socket, 2);
-      close(rpc_socket);
-      continue;
-    }
-#endif // defined(__LINUX__) && defined(LIBWRAP)
-
-    rpc_server_t *server = new rpc_server_t(rpc_socket);
-    server->verbose = verbose;
-    server->set_debugger_instance(create_debug_session());
-    handle_session(server);
-  }
-/ * NOTREACHED
-  term_subsystem();
-#ifndef __SINGLE_THREADED_SERVER__
-  qmutex_free(g_lock);
 #endif
-* /
-}
-
-main */
-
-
-int idados_init()
-{
-  int port_number = DEBUGGER_PORT_NUMBER;
-
-  // call the debugger module to initialize its subsystem once
-  if (!init_subsystem())
-  {
-    lprintf("Could not initialize subsystem!");
-    return -1;
-  }
 
   if ( !init_irs_layer() )
   {
@@ -422,11 +319,11 @@ int idados_init()
   }
 
   listen_socket = socket(AF_INET, SOCK_STREAM, 0);
-
-  if ( listen_socket == -1 )
+  if ( listen_socket == INVALID_SOCKET )
     neterr(NULL, "socket");
 
-  setup_irs((idarpc_stream_t*)listen_socket);
+  idarpc_stream_t *irs = (idarpc_stream_t *)listen_socket;
+  setup_irs(irs);
 
   struct sockaddr_in sa;
   memset(&sa, 0, sizeof(sa));
@@ -434,19 +331,28 @@ int idados_init()
   sa.sin_port   = qhtons(short(port_number));
 
   if ( bind(listen_socket, (sockaddr *)&sa, sizeof(sa)) == SOCKET_ERROR )
-    neterr((idarpc_stream_t *)listen_socket, "bind");
+    neterr(irs, "bind");
 
   if ( listen(listen_socket, SOMAXCONN) == SOCKET_ERROR )
-    neterr((idarpc_stream_t *)listen_socket, "listen");
+    neterr(irs, "listen");
 
+  hostent *local_host = gethostbyname("");
+  if ( local_host != NULL )
+  {
+    const char *local_ip = inet_ntoa(*(struct in_addr *)*local_host->h_addr_list);
+    if ( local_host->h_name != NULL && local_ip != NULL )
+      lprintf("Host %s (%s): ", local_host->h_name, local_ip);
+    else if ( local_ip != NULL )
+      lprintf("Host %s: ", local_ip);
+  }
   lprintf("Listening on port #%u...\n", port_number);
 
- return 1;
+  return 1;
 }
 
 void idados_term()
 {
-  shutdown_gracefully();
+  shutdown_gracefully(0);
 }
 
 bool DEBUG_RemoteDataReady(void) //FIXME need to rework this.
@@ -511,16 +417,21 @@ int idados_start_session()
     sockaddr_in sa;
     socklen_t salen = sizeof(sa);
     SOCKET rpc_socket = accept(listen_socket, (sockaddr *)&sa, &salen);
-    if ( rpc_socket == -1 )
-      neterr((idarpc_stream_t *)listen_socket, "accept");
+    if ( rpc_socket == INVALID_SOCKET )
+    {
+      if ( errno != EINTR )
+        neterr((idarpc_stream_t *)listen_socket, "accept");
+      return 0;
+    }
 #if defined(__LINUX__) && defined(LIBWRAP)
-    const char *p;
-    if((p = check_connection(rpc_socket)) != NULL) {
+    const char *p = check_connection(rpc_socket);
+    if ( p != NULL )
+    {
       fprintf(stderr,
         "ida-server CONNECTION REFUSED from %s (tcp_wrappers)\n", p);
       shutdown(rpc_socket, 2);
       close(rpc_socket);
-      continue;
+      return 0;
     }
 #endif // defined(__LINUX__) && defined(LIBWRAP)
 
@@ -539,28 +450,64 @@ int idados_handle_command()
   if(g_idados_server == NULL)
     ret = idados_start_session();
 
+  rpc_server_t *server = g_idados_server;
+
   if(ret)
   {
-   bytevec_t cmd;
-   dosbox_debmod_t *dm = (dosbox_debmod_t *)g_idados_server->get_debugger_instance();
-   
-   //g_idados_server->poll_required = dm->events.empty() == true ? false : true;
-   //g_idados_server->poll_required = false;
-//printf("OK!\n");
-   dm->dosbox_step_ret = 0;
-   rpc_packet_t *packet = g_idados_server->process_request(cmd); // FIXME: "must_login" argument?
-   if (packet != NULL)
-     qfree(packet);
+    dosbox_debmod_t *dm = (dosbox_debmod_t *)server->get_debugger_instance();
 
-   return dm->dosbox_step_ret;
+    // FIXME: poll_required is gone. Replace it by anything?
+    //g_idados_server->poll_required = dm->events.empty() == true ? false : true;
+    //g_idados_server->poll_required = false;
+    //printf("OK!\n");
+    dm->dosbox_step_ret = 0;
+    bytevec_t empty;
+    rpc_packet_t *packet = server->process_request(empty); // FIXME: "must_login" argument?
+    if (packet != NULL)
+      qfree(packet);
+
+    return dm->dosbox_step_ret;
   }
-/*
+#if 0
   server->network_error_code = 0;
+  lprintf("[%d] Closing connection from %s...\n", sid, peername);
 
-  lprintf("Closing incoming connection...\n");
+  bool preserve_server = keep_broken_connections && server->get_broken_connection();
+  if ( !preserve_server )
+  { // Terminate dedicated debugger instance.
+    server->get_debugger_instance()->dbg_term();
+    server->term_irs();
+  }
+  else
+  {
+    server->term_irs();
+    lprintf("[%d] Debugged session entered into sleeping mode\n", sid);
+    server->prepare_broken_connection();
+  }
 
-  server->term_irs();
-*/
+  if ( !preserve_server )
+  {
+    // Remove the session from the list
+    srv_lock_begin();
+    for (rpc_server_list_t::iterator it = clients_list.begin(); it != clients_list.end();++it)
+    {
+      if ( it->first != server )
+        continue;
+
+#ifndef __SINGLE_THREADED_SERVER__
+      // free the thread resources
+      qthread_free(it->second);
+#endif
+
+      // remove client from the list
+      clients_list.erase(it);
+      break;
+    }
+    srv_lock_end();
+
+    // Free the debug session
+    delete server;
+#endif
   return 0;
 }
 
@@ -589,6 +536,8 @@ void idados_hit_breakpoint(PhysPt addr)
   // FIXME: poll_required is gone. Replace it by anything?
   //g_idados_server->poll_required = true;
   dm->hit_breakpoint(addr);
+
+  // FIXME: Release any mouse pointer grab?
 
   idados_stopped();
 
