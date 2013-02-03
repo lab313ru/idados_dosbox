@@ -2549,6 +2549,9 @@ bool DEBUG_HeavyIsBreakpoint(void) {
 	}
 	if (CBreakpoint::CheckBreakpoint(SegValue(cs),reg_eip)) {
 
+		// Release any mouse pointer grab
+		if (mouselocked) GFX_CaptureMouse();
+
 		//ERIC
 		idados_hit_breakpoint(SegPhys(cs)+reg_eip);
 

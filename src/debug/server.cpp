@@ -531,8 +531,6 @@ void idados_hit_breakpoint(PhysPt addr)
   
   dm->hit_breakpoint(addr);
 
-  // FIXME: Release any mouse pointer grab?
-
   idados_stopped();
 
 }
