@@ -400,10 +400,10 @@ class dosbox_rpc_server_t : public rpc_server_t
 int dosbox_rpc_server_t::poll_events(int timeout_ms)
 {
   int code = rpc_server_t::poll_events(timeout_ms);
-  // HACK: poll_events sets poll_debug_events to true if there were no
-  // packets. We treat this as an error condition so that the event
-  // handling loop aborts, and control returns to dosbox.
-  if (poll_debug_events)
+
+  // poll_events sets poll_debug_events to true if there were no
+  // packets. We return a non-zero error code to let control return to dosbox.
+  if (!has_pending_event && poll_debug_events)
     return -1;
   return code;
 }
@@ -456,10 +456,6 @@ int idados_handle_command()
   {
     dosbox_debmod_t *dm = (dosbox_debmod_t *)server->get_debugger_instance();
 
-    // FIXME: poll_required is gone. Replace it by anything?
-    //g_idados_server->poll_required = dm->events.empty() == true ? false : true;
-    //g_idados_server->poll_required = false;
-    //printf("OK!\n");
     dm->dosbox_step_ret = 0;
     bytevec_t empty;
     rpc_packet_t *packet = server->process_request(empty); // FIXME: "must_login" argument?
@@ -533,8 +529,6 @@ void idados_hit_breakpoint(PhysPt addr)
 
   dosbox_debmod_t *dm = (dosbox_debmod_t *)g_idados_server->get_debugger_instance();
   
-  // FIXME: poll_required is gone. Replace it by anything?
-  //g_idados_server->poll_required = true;
   dm->hit_breakpoint(addr);
 
   // FIXME: Release any mouse pointer grab?
