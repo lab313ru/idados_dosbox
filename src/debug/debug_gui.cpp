@@ -24,7 +24,9 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
-//#include <curses.h>
+#ifndef C_IDA_DEBUG
+#include <curses.h>
+#endif
 #include <string.h>
 
 #include "support.h"
@@ -84,7 +86,7 @@ return;
 }
 
 void DEBUG_RefreshPage(char scroll) {
-/*
+#ifndef C_IDA_DEBUG
 	if (scroll==-1 && logBuffPos!=logBuff.begin()) logBuffPos--;
 	else if (scroll==1 && logBuffPos!=logBuff.end()) logBuffPos++;
 
@@ -98,12 +100,12 @@ void DEBUG_RefreshPage(char scroll) {
 		--i;
 		for (string::size_type posf=0, posl; (posl=(*i).find('\n',posf)) != string::npos ;posf=posl+1)
 			rem_lines -= (int) ((posl-posf) / maxx) + 1; // len=(posl+1)-posf-1
-		// Const cast is needed for pdcurses which has no const char in mvwprintw (bug maybe)
+		/* Const cast is needed for pdcurses which has no const char in mvwprintw (bug maybe) */
 		mvwprintw(dbg.win_out,rem_lines-1, 0, const_cast<char*>((*i).c_str()));
 	}
 	mvwprintw(dbg.win_out,maxy-1, 0, "");
 	wrefresh(dbg.win_out);
-*/
+#endif
 }
 
 void LOG::operator() (char const* format, ...){
@@ -167,31 +169,31 @@ static void DrawBars(void) {
 
 
 static void MakeSubWindows(void) {
-/*ERIC
-	// The Std output win should go at the bottom
-	// Make all the subwindows
+#ifndef C_IDA_DEBUG
+	/* The Std output win should go at the bottom */
+	/* Make all the subwindows */
 	int win_main_maxy, win_main_maxx; getmaxyx(dbg.win_main,win_main_maxy,win_main_maxx);
 	int outy=1; //Match values with above
-	/ * The Register window  * /
+	/* The Register window  */
 	dbg.win_reg=subwin(dbg.win_main,4,win_main_maxx,outy,0);
 	outy+=5; // 6
-	/ * The Data Window * /
+	/* The Data Window */
 	dbg.win_data=subwin(dbg.win_main,10,win_main_maxx,outy,0);
 	outy+=11; // 17
-	/ * The Code Window * /
+	/* The Code Window */
 	dbg.win_code=subwin(dbg.win_main,11,win_main_maxx,outy,0);
 	outy+=12; // 29
-	/ * The Variable Window * /
+	/* The Variable Window */
 	dbg.win_var=subwin(dbg.win_main,4,win_main_maxx,outy,0);
 	outy+=5; // 34
-	/ * The Output Window * /	
+	/* The Output Window */	
 	dbg.win_out=subwin(dbg.win_main,win_main_maxy-outy,win_main_maxx,outy,0);
 //	dbg.input_y=win_main_maxy-1;
 	scrollok(dbg.win_out,TRUE);
 	DrawBars();
 	Draw_RegisterLayout();
 	refresh();
-*/
+#endif
 }
 
 static void MakePairs(void) {
@@ -273,22 +275,25 @@ void LOG_StartUp(void) {
 
 
 void DBGUI_StartUp(void) {
+#ifndef C_IDA_DEBUG
 	/* Start the main window */
-//	dbg.win_main=initscr();
-//ERIC
-//	cbreak();       /* take input chars one at a time, no wait for \n */
-//	noecho();       /* don't echo input */
-//	nodelay(dbg.win_main,true);
-//	keypad(dbg.win_main,true);
+	dbg.win_main=initscr();
+	cbreak();       /* take input chars one at a time, no wait for \n */
+	noecho();       /* don't echo input */
+	nodelay(dbg.win_main,true);
+	keypad(dbg.win_main,true);
 	#ifndef WIN32
-//	resizeterm(50,80);
-//	touchwin(dbg.win_main);
+	resizeterm(50,80);
+	touchwin(dbg.win_main);
 	#endif
-//	old_cursor_state = curs_set(0);
-//	start_color();
+	old_cursor_state = curs_set(0);
+	start_color();
+#endif
 	cycle_count=0;
-//	MakePairs();
-//	MakeSubWindows();
+#ifndef C_IDA_DEBUG
+	MakePairs();
+	MakeSubWindows();
+#endif
 
 }
 
