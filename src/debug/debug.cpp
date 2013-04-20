@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2011  The DOSBox Team
+ *  Copyright (C) 2002-2013  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -2209,8 +2209,9 @@ void DEBUG_SetupConsole(void) {
 	WIN32_Console();
 	#else
 	tcgetattr(0,&consolesettings);
-	printf("\e[8;50;80t"); //resize terminal
-	fflush(NULL);
+	//curses must be inited first in order to catch the resize (is an event)
+//	printf("\e[8;50;80t"); //resize terminal
+//	fflush(NULL);
 	#endif	
 #endif
 	memset((void *)&cursesDbg,0,sizeof(cursesDbg));
@@ -2229,8 +2230,8 @@ void DEBUG_ShutDown(Section * /*sec*/) {
 	#ifndef WIN32
 	tcsetattr(0, TCSANOW,&consolesettings);
 //	printf("\e[0m\e[2J"); //Seems to destroy scrolling
-	printf("\ec");
-	fflush(NULL);
+//	printf("\ec"); //Doesn't seem to be needed anymore
+//	fflush(NULL);
 	#endif
 #endif
 
