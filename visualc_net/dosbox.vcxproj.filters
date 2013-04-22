@@ -1,0 +1,751 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{affb862d-995f-4127-92f8-b2639ade37a0}</UniqueIdentifier>
+      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
+    </Filter>
+    <Filter Include="Source Files\cpu">
+      <UniqueIdentifier>{12c5e50f-986a-4b7b-9a18-6d571548cbf8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cpu\core_normal">
+      <UniqueIdentifier>{d5c72abb-1b06-4820-a87f-8188f0389d94}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cpu\core_full">
+      <UniqueIdentifier>{93c50de3-26e0-4dd9-9632-f8b8438e04b7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cpu\core_dyn_x86">
+      <UniqueIdentifier>{b3bc4090-0dee-48bf-bcba-2b472bccbb38}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cpu\core_dynrec">
+      <UniqueIdentifier>{b3613322-fe7f-4295-9b9c-e73424569b5f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\debug">
+      <UniqueIdentifier>{e02ad28a-c92a-4871-8f4b-0927119ee0b3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\dos">
+      <UniqueIdentifier>{438f2640-6044-4a50-8b8c-ac3214c19f71}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\dos\win32headers">
+      <UniqueIdentifier>{6c658e63-0bcc-4b4b-a744-f01c32ca0fa3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\dos\cdrom">
+      <UniqueIdentifier>{2dbafa03-64f5-45e0-9b30-cd25b90c0ab9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\dos\drives">
+      <UniqueIdentifier>{ab22d016-2296-44c1-a4f2-b9a42473cc56}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hardware">
+      <UniqueIdentifier>{2c875f1b-8c0f-4703-b97e-680cc2596125}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hardware\vga">
+      <UniqueIdentifier>{a5ae5280-8ddf-49d4-919f-0788e70d9c03}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hardware\sound">
+      <UniqueIdentifier>{d9930d71-83cc-4a38-8d7a-3e999305f9c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hardware\serialport">
+      <UniqueIdentifier>{da19ea10-7712-48ae-90a2-818f44368ecb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\gui">
+      <UniqueIdentifier>{b7f68c2e-ffa2-4b23-813b-584fb609acc5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ints">
+      <UniqueIdentifier>{a149a178-859a-4835-b772-2336cc298a5e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ints\int10">
+      <UniqueIdentifier>{1a8bcce9-af32-4430-9de6-5c21ab14f50c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\shell">
+      <UniqueIdentifier>{1df22547-9dea-4877-b677-db2cadd6139d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\misc">
+      <UniqueIdentifier>{094137db-aaf7-4424-982a-addc4cbb062d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\visualc">
+      <UniqueIdentifier>{393b8078-1356-4ac8-bcbc-0efe716ad862}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\fpu">
+      <UniqueIdentifier>{2fd86bea-51d8-48d3-88a1-4c6e86559ac3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{18676a43-86f4-4cd3-8402-b7dfb5c8cd96}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl</Extensions>
+    </Filter>
+    <Filter Include="Header Files\idados">
+      <UniqueIdentifier>{c6e06b8f-414d-46d5-a0f8-f03b43405c4e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\debug\idados">
+      <UniqueIdentifier>{19c49fd6-8968-4762-99d8-716f6db1a4e7}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\cpu\callback.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\core_dyn_x86.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\core_dynrec.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\core_full.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\core_normal.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\core_prefetch.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\core_simple.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\cpu.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\flags.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\modrm.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cpu\paging.cpp">
+      <Filter>Source Files\cpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\debug\debug.cpp">
+      <Filter>Source Files\debug</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\debug\debug_disasm.cpp">
+      <Filter>Source Files\debug</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\debug\debug_gui.cpp">
+      <Filter>Source Files\debug</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\debug\debug_win32.cpp">
+      <Filter>Source Files\debug</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_classes.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_devices.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_execute.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_files.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_ioctl.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_keyboard_layout.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_memory.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_misc.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_mscdex.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_programs.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\dos_tables.cpp">
+      <Filter>Source Files\dos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\cdrom.cpp">
+      <Filter>Source Files\dos\cdrom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\cdrom_aspi_win32.cpp">
+      <Filter>Source Files\dos\cdrom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\cdrom_image.cpp">
+      <Filter>Source Files\dos\cdrom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\cdrom_ioctl_win32.cpp">
+      <Filter>Source Files\dos\cdrom</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\drive_cache.cpp">
+      <Filter>Source Files\dos\drives</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\drive_fat.cpp">
+      <Filter>Source Files\dos\drives</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\drive_iso.cpp">
+      <Filter>Source Files\dos\drives</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\drive_local.cpp">
+      <Filter>Source Files\dos\drives</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\drive_virtual.cpp">
+      <Filter>Source Files\dos\drives</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dos\drives.cpp">
+      <Filter>Source Files\dos\drives</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\cmos.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\dma.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\hardware.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\iohandler.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\ipx.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\ipxserver.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\joystick.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\keyboard.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\memory.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\mixer.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\pci_bus.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\pic.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\timer.cpp">
+      <Filter>Source Files\hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_attr.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_crtc.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_dac.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_draw.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_gfx.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_memory.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_misc.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_other.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_paradise.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_s3.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_seq.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_tseng.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\vga_xga.cpp">
+      <Filter>Source Files\hardware\vga</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\adlib.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\dbopl.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\disney.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\gameblaster.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\gus.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\mpu401.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\pcspeaker.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\sblaster.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\tandy_sound.cpp">
+      <Filter>Source Files\hardware\sound</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\serialport\directserial.cpp">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\serialport\libserial.cpp">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\serialport\misc_util.cpp">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\serialport\nullmodem.cpp">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\serialport\serialdummy.cpp">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\serialport\serialport.cpp">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hardware\serialport\softmodem.cpp">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\libs\gui_tk\gui_tk.cpp">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gui\midi.cpp">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gui\render.cpp">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gui\render_scalers.cpp">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gui\sdl_gui.cpp">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gui\sdl_mapper.cpp">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gui\sdlmain.cpp">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\bios.cpp">
+      <Filter>Source Files\ints</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\bios_disk.cpp">
+      <Filter>Source Files\ints</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\bios_keyboard.cpp">
+      <Filter>Source Files\ints</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\ems.cpp">
+      <Filter>Source Files\ints</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\mouse.cpp">
+      <Filter>Source Files\ints</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\xms.cpp">
+      <Filter>Source Files\ints</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_char.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_memory.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_misc.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_modes.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_pal.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_put_pixel.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_vesa.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_video_state.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ints\int10_vptable.cpp">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\shell.cpp">
+      <Filter>Source Files\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\shell_batch.cpp">
+      <Filter>Source Files\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\shell_cmds.cpp">
+      <Filter>Source Files\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\shell_misc.cpp">
+      <Filter>Source Files\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\misc\cross.cpp">
+      <Filter>Source Files\misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\misc\messages.cpp">
+      <Filter>Source Files\misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\misc\programs.cpp">
+      <Filter>Source Files\misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\misc\setup.cpp">
+      <Filter>Source Files\misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\misc\support.cpp">
+      <Filter>Source Files\misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\fpu\fpu.cpp">
+      <Filter>Source Files\fpu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idasdk64\plugins\debugger\debmod.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idasdk64\plugins\debugger\util.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idados\dosbox_debmod.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idasdk64\plugins\debugger\pc_debmod.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idasdk64\plugins\debugger\rpc_engine.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idasdk64\plugins\debugger\rpc_hlp.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idasdk64\plugins\debugger\rpc_server.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\debug\server.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\idasdk64\plugins\debugger\tcpip.cpp">
+      <Filter>Source Files\debug\idados</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dosbox.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\src\winres.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\cpu\instructions.h">
+      <Filter>Source Files\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\lazyflags.h">
+      <Filter>Source Files\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\modrm.h">
+      <Filter>Source Files\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\helpers.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\prefix_0f.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\prefix_66.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\prefix_66_0f.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\prefix_none.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\string.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\support.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_normal\table_ea.h">
+      <Filter>Source Files\cpu\core_normal</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\ea_lookup.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\load.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\loadwrite.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\op.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\optable.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\save.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\string.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_full\support.h">
+      <Filter>Source Files\cpu\core_full</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dyn_x86\cache.h">
+      <Filter>Source Files\cpu\core_dyn_x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dyn_x86\decoder.h">
+      <Filter>Source Files\cpu\core_dyn_x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dyn_x86\dyn_fpu.h">
+      <Filter>Source Files\cpu\core_dyn_x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dyn_x86\dyn_fpu_dh.h">
+      <Filter>Source Files\cpu\core_dyn_x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dyn_x86\helpers.h">
+      <Filter>Source Files\cpu\core_dyn_x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dyn_x86\risc_x86.h">
+      <Filter>Source Files\cpu\core_dyn_x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dyn_x86\string.h">
+      <Filter>Source Files\cpu\core_dyn_x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\cache.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\decoder.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\decoder_basic.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\decoder_opcodes.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\dyn_fpu.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\operators.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\risc_x64.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cpu\core_dynrec\risc_x86.h">
+      <Filter>Source Files\cpu\core_dynrec</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\debug\debug_inc.h">
+      <Filter>Source Files\debug</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\debug\disasm_tables.h">
+      <Filter>Source Files\debug</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\dev_con.h">
+      <Filter>Source Files\dos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\drives.h">
+      <Filter>Source Files\dos\win32headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\Ntddcdrm.h">
+      <Filter>Source Files\dos\win32headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\Ntddscsi.h">
+      <Filter>Source Files\dos\win32headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\Ntddstor.h">
+      <Filter>Source Files\dos\win32headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\scsidefs.h">
+      <Filter>Source Files\dos\win32headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\wnaspi32.h">
+      <Filter>Source Files\dos\win32headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\dos\cdrom.h">
+      <Filter>Source Files\dos\cdrom</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hardware\font-switch.h">
+      <Filter>Source Files\hardware</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hardware\serialport\directserial.h">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hardware\serialport\libserial.h">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hardware\serialport\misc_util.h">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hardware\serialport\nullmodem.h">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hardware\serialport\serialdummy.h">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hardware\serialport\softmodem.h">
+      <Filter>Source Files\hardware\serialport</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\gui\midi_win32.h">
+      <Filter>Source Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\gui\render_scalers.h">
+      <Filter>Source Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\gui\render_templates.h">
+      <Filter>Source Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\ints\xms.h">
+      <Filter>Source Files\ints</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\ints\int10.h">
+      <Filter>Source Files\ints\int10</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\platform\visualc\config.h">
+      <Filter>Source Files\visualc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\platform\visualc\unistd.h">
+      <Filter>Source Files\visualc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\fpu\fpu_instructions.h">
+      <Filter>Source Files\fpu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\fpu\fpu_instructions_x86.h">
+      <Filter>Source Files\fpu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\bios.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\bios_disk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\callback.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\control.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\cpu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\cross.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\debug.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dma.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dos_inc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dos_system.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\dosbox.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\fpu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\hardware.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\inout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\joystick.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\keyboard.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\logging.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\mem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\mixer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\modules.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\mouse.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\paging.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\pci_bus.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\pic.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\programs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\regs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\render.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\serialport.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\setup.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\shell.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\support.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\timer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\vga.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\video.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\debug\server.h">
+      <Filter>Header Files\idados</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\debug\server2.h">
+      <Filter>Header Files\idados</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\src\dosbox.ico" />
+  </ItemGroup>
+</Project>
