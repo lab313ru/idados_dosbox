@@ -5,6 +5,10 @@
 #include "server.h"
 #include "dosbox_debmod.h"
 
+#ifdef _MSC_VER
+typedef int socklen_t;
+#endif
+
 // DOSBox headers
 #include "dosbox.h"
 #include "mem.h"
@@ -380,8 +384,7 @@ bool DEBUG_RemoteDataReady(void) //FIXME need to rework this.
   return false;
 }
 
-idaman callui_t dummy_callui(ui_notification_t what,...);
-idaman callui_t ida_export_data /*idaapi*/ dummy_callui(ui_notification_t what, ...)
+idaman callui_t idaapi dummy_callui(ui_notification_t what, ...)
 {
   // TODO: Maybe implement at least ui_msg?
   callui_t i;
