@@ -2654,7 +2654,6 @@ Bits DEBUG_RemoteStep(void)
 
 int DEBUG_Continue(void)
 {
-	printf("DEBUG_Continue()\n");
 	// Run Programm
 	debugging=false;
 	CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);
