@@ -396,7 +396,7 @@ idaman callui_t idaapi dummy_callui(ui_notification_t what, ...)
 class dosbox_rpc_server_t : public rpc_server_t
 {
   public:
-    dosbox_rpc_server_t(SOCKET rpc_socket) : rpc_server_t(rpc_socket) { }
+    dosbox_rpc_server_t(idarpc_stream_t *irs) : rpc_server_t(irs) { }
     virtual int poll_events(int timeout_ms);
 };
 
@@ -438,7 +438,7 @@ int idados_start_session()
     }
 #endif // defined(__LINUX__) && defined(LIBWRAP)
 
-    g_idados_server = new dosbox_rpc_server_t(rpc_socket);
+    g_idados_server = new dosbox_rpc_server_t((idarpc_stream_t *)rpc_socket);
     g_idados_server->verbose = true;
     g_idados_server->set_debugger_instance(create_debug_session());
     dosbox_debmod_t *dm = (dosbox_debmod_t *)g_idados_server->get_debugger_instance();
