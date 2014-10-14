@@ -197,10 +197,30 @@ static Bit8u * VGA_Draw_Linear_Line(Bitu vidstart, Bitu /*line*/) {
 }
 
 static Bit8u * VGA_Draw_Xlat16_Linear_Line(Bitu vidstart, Bitu /*line*/) {
-	Bit8u *ret = &vga.draw.linear_base[ vidstart & vga.draw.linear_mask ];
+	Bitu offset = vidstart & vga.draw.linear_mask;
+	Bit8u *ret = &vga.draw.linear_base[offset];
 	Bit16u* temps = (Bit16u*) TempLine;
-	for(Bitu i = 0; i < vga.draw.line_length; i++) {
-		temps[i]=vga.dac.xlat16[ret[i]];
+
+	// see VGA_Draw_Linear_Line
+	if (GCC_UNLIKELY((vga.draw.line_length + offset)& ~vga.draw.linear_mask)) {
+		Bitu end = (offset + vga.draw.line_length) & vga.draw.linear_mask;
+		
+		// assuming lines not longer than 4096 pixels
+		Bitu wrapped_len = end & 0xFFF;
+		Bitu unwrapped_len = vga.draw.line_length-wrapped_len;
+		
+		// unwrapped chunk: to top of memory block
+		for(Bitu i = 0; i < unwrapped_len; i++)
+			temps[i]=vga.dac.xlat16[ret[i]];
+		
+		// wrapped chunk: from base of memory block
+		for(Bitu i = 0; i < wrapped_len; i++)
+			temps[i + unwrapped_len]=vga.dac.xlat16[vga.draw.linear_base[i]];
+
+	} else {
+		for(Bitu i = 0; i < vga.draw.line_length; i++) {
+			temps[i]=vga.dac.xlat16[ret[i]];
+		}
 	}
 	return TempLine;
 }
@@ -1401,7 +1421,7 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		VGA_DrawLine=VGA_Draw_1BPP_Line;
 		break;
 	case M_TEXT:
-		aspect_ratio=1.0;
+		aspect_ratio=1.2;
 		vga.draw.blocks=width;
 		doublewidth=(vga.seq.clocking_mode & 0x8) > 0;
 		if ((IS_VGA_ARCH) && (svgaCard==SVGA_None)) {
@@ -1412,6 +1432,7 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 			} else {
 				vga.draw.char9dot = true;
 				width*=9;
+				aspect_ratio*=1.125;
 			}
 			VGA_DrawLine=VGA_TEXT_Xlat16_Draw_Line;
 			bpp=16;
@@ -1471,14 +1492,14 @@ void VGA_SetupDrawing(Bitu /*val*/) {
 		break;
 	case M_TANDY_TEXT:
 		doublewidth=(vga.tandy.mode_control & 0x1)==0;
-		aspect_ratio=1;
+		aspect_ratio=1.2;
 		doubleheight=true;
 		vga.draw.blocks=width;
 		width<<=3;
 		VGA_DrawLine=VGA_TEXT_Draw_Line;
 		break;
 	case M_HERC_TEXT:
-		aspect_ratio=1;
+		aspect_ratio=((double)480)/((double)350);
 		vga.draw.blocks=width;
 		width<<=3;
 		VGA_DrawLine=VGA_TEXT_Herc_Draw_Line;

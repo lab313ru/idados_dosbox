@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2014  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -361,7 +361,7 @@ typedef char assert_right_size [MAX_SCANCODES == (sizeof(sdlkey_map)/sizeof(sdlk
 
 #else // !MACOSX
 
-#define MAX_SCANCODES 212
+#define MAX_SCANCODES 0xdf
 static SDLKey sdlkey_map[MAX_SCANCODES]={SDLK_UNKNOWN,SDLK_ESCAPE,
 	SDLK_1,SDLK_2,SDLK_3,SDLK_4,SDLK_5,SDLK_6,SDLK_7,SDLK_8,SDLK_9,SDLK_0,
 	/* 0x0c: */
@@ -380,13 +380,28 @@ static SDLKey sdlkey_map[MAX_SCANCODES]={SDLK_UNKNOWN,SDLK_ESCAPE,
 	SDLK_KP7,SDLK_KP8,SDLK_KP9,SDLK_KP_MINUS,SDLK_KP4,SDLK_KP5,SDLK_KP6,SDLK_KP_PLUS,
 	SDLK_KP1,SDLK_KP2,SDLK_KP3,SDLK_KP0,SDLK_KP_PERIOD,
 	SDLK_UNKNOWN,SDLK_UNKNOWN,
-	SDLK_LESS,SDLK_F11,SDLK_F12,
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,
-	/* 0xb7: */
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z
-	/* 0xd4: ... */
+	SDLK_LESS,SDLK_F11,SDLK_F12, Z, Z, Z, Z, Z, Z, Z,
+	/* 0x60: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0x70: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0x80: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0x90: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xA0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xB0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xC0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xD0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z//,Z,Z,
+	/* 0xE0: */
+	//Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xF0: */
+//	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z//,Z,Z
+
 };
 #endif
 
@@ -394,6 +409,7 @@ static SDLKey sdlkey_map[MAX_SCANCODES]={SDLK_UNKNOWN,SDLK_ESCAPE,
 
 
 SDLKey MapSDLCode(Bitu skey) {
+//	LOG_MSG("MapSDLCode %d %X",skey,skey);
 	if (usescancodes) {
 		if (skey<MAX_SCANCODES) return sdlkey_map[skey];
 		else return SDLK_UNKNOWN;
@@ -401,6 +417,7 @@ SDLKey MapSDLCode(Bitu skey) {
 }
 
 Bitu GetKeyCode(SDL_keysym keysym) {
+//	LOG_MSG("GetKeyCode %X %X %X",keysym.scancode,keysym.sym,keysym.mod);
 	if (usescancodes) {
 		Bitu key=(Bitu)keysym.scancode;
 		if (key==0
@@ -520,11 +537,12 @@ protected:
 };
 
 #define MAX_VJOY_BUTTONS 8
-
+#define MAX_VJOY_HAT 16
+#define MAX_VJOY_AXIS 8
 static struct {
 	bool button_pressed[MAX_VJOY_BUTTONS];
-	Bit16s axis_pos[8];
-	bool hat_pressed[16];
+	Bit16s axis_pos[MAX_VJOY_AXIS];
+	bool hat_pressed[MAX_VJOY_HAT];
 } virtual_joysticks[2];
 
 
@@ -2311,6 +2329,8 @@ void MAPPER_Run(bool pressed) {
 	MAPPER_RunInternal();
 }
 
+SDL_Surface* SDL_SetVideoMode_Wrap(int width,int height,int bpp,Bit32u flags);
+
 void MAPPER_RunInternal() {
 	int cursor = SDL_ShowCursor(SDL_QUERY);
 	SDL_ShowCursor(SDL_ENABLE);
@@ -2322,7 +2342,7 @@ void MAPPER_RunInternal() {
 
 	/* Be sure that there is no update in progress */
 	GFX_EndUpdate( 0 );
-	mapper.surface=SDL_SetVideoMode(640,480,8,0);
+	mapper.surface=SDL_SetVideoMode_Wrap(640,480,8,0);
 	if (mapper.surface == NULL) E_Exit("Could not initialize video mode for mapper: %s",SDL_GetError());
 
 	/* Set some palette entries */
@@ -2390,15 +2410,17 @@ void MAPPER_StartUp(Section * sec) {
 	mapper.sticks.num=0;
 	mapper.sticks.num_groups=0;
 	Bitu i;
-	for (i=0; i<16; i++) {
+	for (i=0; i<MAX_VJOY_BUTTONS; i++) {
 		virtual_joysticks[0].button_pressed[i]=false;
 		virtual_joysticks[1].button_pressed[i]=false;
+	}
+	for (i=0; i<MAX_VJOY_HAT; i++) {
 		virtual_joysticks[0].hat_pressed[i]=false;
 		virtual_joysticks[1].hat_pressed[i]=false;
 	}
-	for (i=0; i<8; i++) {
+	for (i=0; i<MAX_VJOY_AXIS; i++) {
 		virtual_joysticks[0].axis_pos[i]=0;
-		virtual_joysticks[0].axis_pos[i]=0;
+		virtual_joysticks[1].axis_pos[i]=0;
 	}
 
 	usescancodes = false;
@@ -2466,6 +2488,11 @@ void MAPPER_StartUp(Section * sec) {
 			sdlkey_map[0x77]=SDLK_PAUSE;
 			sdlkey_map[0x63]=SDLK_PRINT;
 			sdlkey_map[0x64]=SDLK_RALT;
+
+			//Win-keys
+			sdlkey_map[0x7d]=SDLK_LSUPER;
+			sdlkey_map[0x7e]=SDLK_RSUPER;
+			sdlkey_map[0x7f]=SDLK_MENU;
 		} else {
 			sdlkey_map[0x5a]=SDLK_UP;
 			sdlkey_map[0x60]=SDLK_DOWN;
@@ -2501,6 +2528,12 @@ void MAPPER_StartUp(Section * sec) {
 		sdlkey_map[0xc5]=SDLK_PAUSE;
 		sdlkey_map[0xb7]=SDLK_PRINT;
 		sdlkey_map[0xb8]=SDLK_RALT;
+
+		//Win-keys
+		sdlkey_map[0xdb]=SDLK_LMETA;
+		sdlkey_map[0xdc]=SDLK_RMETA;
+		sdlkey_map[0xdd]=SDLK_MENU;
+
 #endif
 
 		Bitu i;
