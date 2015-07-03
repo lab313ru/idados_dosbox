@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{7f31a5bf-e808-4eb6-8069-1cc569a30238}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ida_debugger_plugin">
+      <UniqueIdentifier>{3b73b1ea-6e28-488b-bd40-3e3573d71401}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dosbox_rstub.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="rpc_debmod_dosbox.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\util.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\tcpip.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\rpc_hlp.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\rpc_engine.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\debmod.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\rpc_client.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\rpc_debmod.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\debugger\pc_debmod.cpp">
+      <Filter>ida_debugger_plugin</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
