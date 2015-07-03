@@ -77,7 +77,7 @@
     </ClCompile>
     <Link>
       <AdditionalDependencies>opengl32.lib;winmm.lib;sdlmain.lib;sdl.lib;pdcurses.lib;ws2_32.lib;dinput8.lib;dxguid.lib;ida.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>d:\idd\dosbox.exe</OutputFile>
+      <OutputFile>.\Debug/dosbox.exe</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>.\Debug/dosbox.pdb</ProgramDatabaseFile>
