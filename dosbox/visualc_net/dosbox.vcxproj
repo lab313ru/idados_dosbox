@@ -83,7 +83,7 @@
       <ProgramDatabaseFile>.\Debug/dosbox.pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalLibraryDirectories>..\3rdparty\pdc34dll\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
       <IgnoreSpecificDefaultLibraries>LIBCMT.lib</IgnoreSpecificDefaultLibraries>
       <AdditionalOptions>/ignore:4098 /ignore:4006 /ignore:4088 %(AdditionalOptions)</AdditionalOptions>
@@ -135,7 +135,7 @@
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
       <FixedBaseAddress>false</FixedBaseAddress>
-      <AdditionalLibraryDirectories>..\3rdparty\pdc34dll\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
       <AdditionalOptions>/ignore:4098 /ignore:4006 /ignore:4088 /ignore:4204 %(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>
