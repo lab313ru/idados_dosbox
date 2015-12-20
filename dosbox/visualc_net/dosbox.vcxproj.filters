@@ -425,32 +425,32 @@
     <ClCompile Include="..\src\fpu\fpu.cpp">
       <Filter>Source Files\fpu</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\debugger\util.cpp">
-      <Filter>Source Files\ida_debugger_plugin</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\idados\dosbox_debmod.cpp">
       <Filter>Source Files\idados</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\debugger\rpc_engine.cpp">
-      <Filter>Source Files\ida_debugger_plugin</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\rpc_hlp.cpp">
-      <Filter>Source Files\ida_debugger_plugin</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\rpc_server.cpp">
-      <Filter>Source Files\ida_debugger_plugin</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\debmod.cpp">
-      <Filter>Source Files\ida_debugger_plugin</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\pc_debmod.cpp">
-      <Filter>Source Files\ida_debugger_plugin</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\tcpip.cpp">
-      <Filter>Source Files\ida_debugger_plugin</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\debug\server.cpp">
       <Filter>Source Files\ida_server</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\debugger\debmod.cpp">
+      <Filter>Source Files\ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\debugger\pc_debmod.cpp">
+      <Filter>Source Files\ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\debugger\rpc_engine.cpp">
+      <Filter>Source Files\ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\debugger\rpc_hlp.cpp">
+      <Filter>Source Files\ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\debugger\rpc_server.cpp">
+      <Filter>Source Files\ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\debugger\tcpip.cpp">
+      <Filter>Source Files\ida_debugger_plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\debugger\util.cpp">
+      <Filter>Source Files\ida_debugger_plugin</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
