@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,8 +32,12 @@
 #include "setup.h"
 #include "serialport.h"
 #include <time.h>
-#include <sys/timeb.h>
 
+#if defined(DB_HAVE_CLOCK_GETTIME) && ! defined(WIN32)
+//time.h is already included
+#else
+#include <sys/timeb.h>
+#endif
 
 /* if mem_systems 0 then size_extended is reported as the real size else 
  * zero is reported. ems and xms can increase or decrease the other_memsystems
@@ -489,13 +493,23 @@ static Bitu INT11_Handler(void) {
 #endif
 
 static void BIOS_HostTimeSync() {
+	Bit32u milli = 0;
+#if defined(DB_HAVE_CLOCK_GETTIME) && ! defined(WIN32)
+	struct timespec tp;
+	clock_gettime(CLOCK_REALTIME,&tp);
+	
+	struct tm *loctime;
+	loctime = localtime(&tp.tv_sec);
+	milli = (Bit32u) (tp.tv_nsec / 1000000);
+#else
 	/* Setup time and date */
 	struct timeb timebuffer;
 	ftime(&timebuffer);
 	
 	struct tm *loctime;
 	loctime = localtime (&timebuffer.time);
-
+	milli = (Bit32u) timebuffer.millitm;
+#endif
 	/*
 	loctime->tm_hour = 23;
 	loctime->tm_min = 59;
@@ -513,7 +527,7 @@ static void BIOS_HostTimeSync() {
 		loctime->tm_hour*3600*1000+
 		loctime->tm_min*60*1000+
 		loctime->tm_sec*1000+
-		timebuffer.millitm))*(((double)PIT_TICK_RATE/65536.0)/1000.0));
+		milli))*(((double)PIT_TICK_RATE/65536.0)/1000.0));
 	mem_writed(BIOS_TIMER,ticks);
 }
 
@@ -1234,10 +1248,16 @@ public:
 		}
 		// PS2 mouse
 		config |= 0x04;
+		// DMA *not* supported - Ancient Art of War CGA uses this to identify PCjr
+		if (machine==MCH_PCJR) config |= 0x100;
 		// Gameport
 		config |= 0x1000;
 		mem_writew(BIOS_CONFIGURATION,config);
 		CMOS_SetRegister(0x14,(Bit8u)(config&0xff)); //Should be updated on changes
+		/* Setup PC speaker initial state - real BIOS does this for POST beeps */
+		IO_Write(0x43,0xb6); // PIT 2 mode 3
+		IO_Write(0x42,0x28); // counter 1320
+		IO_Write(0x42,0x05);
 		/* Setup extended memory size */
 		IO_Write(0x70,0x30);
 		size_extended=IO_Read(0x71);

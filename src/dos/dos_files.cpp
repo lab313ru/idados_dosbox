@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -66,6 +66,7 @@ bool DOS_MakeName(char const * const name,char * const fullname,Bit8u * drive) {
 	char tempdir[DOS_PATHLENGTH];
 	char upname[DOS_PATHLENGTH];
 	Bitu r,w;
+	Bit8u c;
 	*drive = DOS_GetDefaultDrive();
 	/* First get the drive */
 	if (name_int[1]==':') {
@@ -78,29 +79,13 @@ bool DOS_MakeName(char const * const name,char * const fullname,Bit8u * drive) {
 	}
 	r=0;w=0;
 	while (name_int[r]!=0 && (r<DOS_PATHLENGTH)) {
-		Bit8u c=name_int[r++];
-		if ((c>='a') && (c<='z')) {upname[w++]=c-32;continue;}
-		if ((c>='A') && (c<='Z')) {upname[w++]=c;continue;}
-		if ((c>='0') && (c<='9')) {upname[w++]=c;continue;}
-		switch (c) {
-		case '/':
-			upname[w++]='\\';
-			break;
-		case ' ': /* should be seperator */
-			break;
-		case '\\':	case '$':	case '#':	case '@':	case '(':	case ')':
-		case '!':	case '%':	case '{':	case '}':	case '`':	case '~':
-		case '_':	case '-':	case '.':	case '*':	case '?':	case '&':
-		case '\'':	case '+':	case '^':	case 246:	case 255:	case 0xa0:
-		case 0xe5:	case 0xbd:	case 0x9d:
-			upname[w++]=c;
-			break;
-		default:
-			LOG(LOG_FILES,LOG_NORMAL)("Makename encountered an illegal char %c hex:%X in %s!",c,c,name);
-			DOS_SetError(DOSERR_PATH_NOT_FOUND);return false;
-			break;
-		}
+		c=name_int[r++];
+		if ((c>='a') && (c<='z')) c-=32;
+		else if (c==' ') continue; /* should be separator */
+		else if (c=='/') c='\\';
+		upname[w++]=c;
 	}
+	while (r>0 && name_int[r-1]==' ') r--;
 	if (r>=DOS_PATHLENGTH) { DOS_SetError(DOSERR_PATH_NOT_FOUND);return false; }
 	upname[w]=0;
 	/* Now parse the new file name to make the final filename */
@@ -174,6 +159,24 @@ bool DOS_MakeName(char const * const name,char * const fullname,Bit8u * drive) {
 				ext[4] = 0;
 				if((strlen(tempdir) - strlen(ext)) > 8) memmove(tempdir + 8, ext, 5);
 			} else tempdir[8]=0;
+
+			for (Bitu i=0;i<strlen(tempdir);i++) {
+				c=tempdir[i];
+				if ((c>='A') && (c<='Z')) continue;
+				if ((c>='0') && (c<='9')) continue;
+				switch (c) {
+				case '$':	case '#':	case '@':	case '(':	case ')':
+				case '!':	case '%':	case '{':	case '}':	case '`':	case '~':
+				case '_':	case '-':	case '.':	case '*':	case '?':	case '&':
+				case '\'':	case '+':	case '^':	case 246:	case 255:	case 0xa0:
+				case 0xe5:	case 0xbd:	case 0x9d:
+					break;
+				default:
+					LOG(LOG_FILES,LOG_NORMAL)("Makename encountered an illegal char %c hex:%X in %s!",c,c,name);
+					DOS_SetError(DOSERR_PATH_NOT_FOUND);return false;
+					break;
+				}
+			}
 
 			if (strlen(fullname)+strlen(tempdir)>=DOS_PATHLENGTH) {
 				DOS_SetError(DOSERR_PATH_NOT_FOUND);return false;
@@ -306,6 +309,7 @@ bool DOS_Rename(char const * const oldname,char const * const newname) {
 }
 
 bool DOS_FindFirst(char * search,Bit16u attr,bool fcb_findfirst) {
+	LOG(LOG_FILES,LOG_NORMAL)("file search attributes %X name %s",attr,search);
 	DOS_DTA dta(dos.dta());
 	Bit8u drive;char fullsearch[DOS_PATHLENGTH];
 	char dir[DOS_PATHLENGTH];char pattern[DOS_PATHLENGTH];
@@ -630,6 +634,11 @@ bool DOS_OpenFileExtended(char const * name, Bit16u flags, Bit16u createAttr, Bi
 
 bool DOS_UnlinkFile(char const * const name) {
 	char fullname[DOS_PATHLENGTH];Bit8u drive;
+	// An existing device returns an access denied error
+	if (DOS_FindDevice(name) != DOS_DEVICES) {
+		DOS_SetError(DOSERR_ACCESS_DENIED);
+		return false;
+	}
 	if (!DOS_MakeName(name,fullname,&drive)) return false;
 	if(Drives[drive]->FileUnlink(fullname)){
 		return true;
@@ -765,7 +774,21 @@ bool DOS_CreateTempFile(char * const name,Bit16u * entry) {
 	return true;
 }
 
-#define FCB_SEP ":.;,=+"
+char DOS_ToUpper(char c) {
+	unsigned char uc = *reinterpret_cast<unsigned char*>(&c);
+	if (uc > 0x60 && uc < 0x7B) uc -= 0x20;
+	else if (uc > 0x7F && uc < 0xA5) {
+		const unsigned char t[0x25] = { 
+			0x00, 0x9a, 0x45, 0x41, 0x8E, 0x41, 0x8F, 0x80, 0x45, 0x45, 0x45, 0x49, 0x49, 0x49, 0x00, 0x00,
+			0x00, 0x92, 0x00, 0x4F, 0x99, 0x4F, 0x55, 0x55, 0x59, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x41, 0x49, 0x4F, 0x55, 0xA5};
+			if (t[uc - 0x80]) uc = t[uc-0x80];
+	}
+	char sc = *reinterpret_cast<char*>(&uc);
+	return sc;
+}
+
+#define FCB_SEP ":;,=+"
 #define ILLEGAL ":.;,=+ \t/\"[]<>|"
 
 static bool isvalid(const char in){
@@ -813,77 +836,87 @@ Bit8u FCB_Parsename(Bit16u seg,Bit16u offset,Bit8u parser ,char *string, Bit8u *
 	fcb.GetName(fcb_name.full);
 	fcb_name.part.drive[0]-='A'-1;fcb_name.part.drive[1]=0;
 	fcb_name.part.name[8]=0;fcb_name.part.ext[3]=0;
-	/* Strip of the leading sepetaror */
-	if((parser & PARSE_SEP_STOP) && *string)  {       //ignore leading seperator
-		char sep[] = FCB_SEP;char a[2];
-		a[0]= *string;a[1]='\0';
-		if (strcspn(a,sep)==0) string++;
-	} 
 	/* strip leading spaces */
 	while((*string==' ')||(*string=='\t')) string++;
+
+	/* Strip of the leading separator */
+	if((parser & PARSE_SEP_STOP) && *string) {
+		char sep[] = FCB_SEP;char a[2];
+		a[0] = *string;a[1] = '\0';
+		if (strcspn(a,sep) == 0) string++;
+	} 
+
+	/* Skip following spaces as well */
+	while((*string==' ')||(*string=='\t')) string++;
+
 	/* Check for a drive */
 	if (string[1]==':') {
+		unsigned char d = *reinterpret_cast<unsigned char*>(&string[0]);
+		if (!isvalid(toupper(d))) {string += 2; goto savefcb;} //TODO check (for ret value)
 		fcb_name.part.drive[0]=0;
 		hasdrive=true;
-		if (isalpha(string[0]) && Drives[toupper(string[0])-'A']) {
-			fcb_name.part.drive[0]=(char)(toupper(string[0])-'A'+1);
+		if (isalpha(d) && Drives[toupper(d)-'A']) { //Floppies under dos always exist, but don't bother with that at this level
+			; //THIS* was here
 		} else ret=0xff;
+		fcb_name.part.drive[0]=DOS_ToUpper(string[0])-'A'+1; //Always do THIS* and continue parsing, just return the right code
 		string+=2;
 	}
-	/* Special checks for . and .. */
-	if (string[0]=='.') {
-		string++;
-		if (!string[0])	{
-			hasname=true;
-			ret=PARSE_RET_NOWILD;
-			strcpy(fcb_name.part.name,".       ");
-			goto savefcb;
-		}
-		if (string[1]=='.' && !string[1])	{
-			string++;
-			hasname=true;
-			ret=PARSE_RET_NOWILD;
-			strcpy(fcb_name.part.name,"..      ");
-			goto savefcb;
-		}
-		goto checkext;
-	}
-	/* Copy the name */	
+
+	/* Check for extension only file names */
+	if (string[0] == '.') {string++;goto checkext;}
+
+	/* do nothing if not a valid name */
+	if(!isvalid(string[0])) goto savefcb;
+
 	hasname=true;finished=false;fill=' ';index=0;
-	while (index<8) {
-		if (!finished) {
-			if (string[0]=='*') {fill='?';fcb_name.part.name[index]='?';if (!ret) ret=1;finished=true;}
-			else if (string[0]=='?') {fcb_name.part.name[index]='?';if (!ret) ret=1;}
-			else if (isvalid(string[0])) {fcb_name.part.name[index]=(char)(toupper(string[0]));}
-			else { finished=true;continue; }
-			string++;
-		} else {
-			fcb_name.part.name[index]=fill;
+	/* Copy the name */	
+	while (true) {
+		unsigned char nc = *reinterpret_cast<unsigned char*>(&string[0]);
+		char ncs = (char)toupper(nc); //Should use DOS_ToUpper, but then more calls need to be changed.
+		if (ncs == '*') { //Handle *
+			fill = '?';
+			ncs = '?';
 		}
-		index++;
+		if (ncs == '?' && !ret && index < 8) ret = 1; //Don't override bad drive
+		if (!isvalid(ncs)) { //Fill up the name.
+			while(index < 8) 
+				fcb_name.part.name[index++] = fill; 
+			break;
+		}
+		if (index < 8) { 
+			fcb_name.part.name[index++] = (fill == '?')?fill:ncs; 
+		}
+		string++;
 	}
 	if (!(string[0]=='.')) goto savefcb;
 	string++;
 checkext:
 	/* Copy the extension */
 	hasext=true;finished=false;fill=' ';index=0;
-	while (index<3) {
-		if (!finished) {
-			if (string[0]=='*') {fill='?';fcb_name.part.ext[index]='?';finished=true;}
-			else if (string[0]=='?') {fcb_name.part.ext[index]='?';if (!ret) ret=1;}
-			else if (isvalid(string[0])) {fcb_name.part.ext[index]=(char)(toupper(string[0]));}
-			else { finished=true;continue; }
-			string++;
-		} else {
-			fcb_name.part.ext[index]=fill;
+	while (true) {
+		unsigned char nc = *reinterpret_cast<unsigned char*>(&string[0]);
+		char ncs = (char)toupper(nc);
+		if (ncs == '*') { //Handle *
+			fill = '?';
+			ncs = '?';
 		}
-		index++;
+		if (ncs == '?' && !ret && index < 3) ret = 1;
+		if (!isvalid(ncs)) { //Fill up the name.
+			while(index < 3) 
+				fcb_name.part.ext[index++] = fill; 
+			break;
+		}
+		if (index < 3) { 
+			fcb_name.part.ext[index++] = (fill=='?')?fill:ncs; 
+		}
+		string++;
 	}
 savefcb:
 	if (!hasdrive & !(parser & PARSE_DFLT_DRIVE)) fcb_name.part.drive[0] = 0;
 	if (!hasname & !(parser & PARSE_BLNK_FNAME)) strcpy(fcb_name.part.name,"        ");
 	if (!hasext & !(parser & PARSE_BLNK_FEXT)) strcpy(fcb_name.part.ext,"   ");
 	fcb.SetName(fcb_name.part.drive[0],fcb_name.part.name,fcb_name.part.ext);
+	fcb.ClearBlockRecsize(); //Undocumented bonus work.
 	*change=(Bit8u)(string-string_begin);
 	return ret;
 }

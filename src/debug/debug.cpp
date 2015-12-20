@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -137,7 +137,7 @@ static char curSelectorName[3] = { 0,0,0 };
 
 static Segment oldsegs[6];
 static Bitu oldflags,oldcpucpl;
-DBGBlock cursesDbg;
+DBGBlock dbg;
 Bitu cycle_count;
 static bool debugging;
 
@@ -145,9 +145,9 @@ static bool debugging;
 static void SetColor(Bitu test) {
 #ifndef C_IDA_DEBUG
 	if (test) {
-		if (has_colors()) { wattrset(cursesDbg.win_reg,COLOR_PAIR(PAIR_BYELLOW_BLACK));}
+		if (has_colors()) { wattrset(dbg.win_reg,COLOR_PAIR(PAIR_BYELLOW_BLACK));}
 	} else {
-		if (has_colors()) { wattrset(cursesDbg.win_reg,0);}
+		if (has_colors()) { wattrset(dbg.win_reg,0);}
 	}
 #endif
 }
@@ -737,92 +737,92 @@ static void DrawData(void) {
 	/* Data win */	
 	for (int y=0; y<8; y++) {
 		// Address
-		if (add<0x10000) mvwprintw (cursesDbg.win_data,1+y,0,"%04X:%04X     ",dataSeg,add);
-		else mvwprintw (cursesDbg.win_data,1+y,0,"%04X:%08X ",dataSeg,add);
+		if (add<0x10000) mvwprintw (dbg.win_data,y,0,"%04X:%04X     ",dataSeg,add);
+		else mvwprintw (dbg.win_data,y,0,"%04X:%08X ",dataSeg,add);
 		for (int x=0; x<16; x++) {
 			address = GetAddress(dataSeg,add);
 			if (mem_readb_checked(address,&ch)) ch=0;
-			mvwprintw (cursesDbg.win_data,1+y,14+3*x,"%02X",ch);
+			mvwprintw (dbg.win_data,y,14+3*x,"%02X",ch);
 			if (ch<32 || !isprint(*reinterpret_cast<unsigned char*>(&ch))) ch='.';
-			mvwprintw (cursesDbg.win_data,1+y,63+x,"%c",ch);
+			mvwprintw (dbg.win_data,y,63+x,"%c",ch);
 			add++;
 		};
 	}	
-	wrefresh(cursesDbg.win_data);
+	wrefresh(dbg.win_data);
 };
 
 static void DrawRegisters(void) {
 #ifndef C_IDA_DEBUG
 	/* Main Registers */
-	SetColor(reg_eax!=oldregs.eax);oldregs.eax=reg_eax;mvwprintw (cursesDbg.win_reg,0,4,"%08X",reg_eax);
-	SetColor(reg_ebx!=oldregs.ebx);oldregs.ebx=reg_ebx;mvwprintw (cursesDbg.win_reg,1,4,"%08X",reg_ebx);
-	SetColor(reg_ecx!=oldregs.ecx);oldregs.ecx=reg_ecx;mvwprintw (cursesDbg.win_reg,2,4,"%08X",reg_ecx);
-	SetColor(reg_edx!=oldregs.edx);oldregs.edx=reg_edx;mvwprintw (cursesDbg.win_reg,3,4,"%08X",reg_edx);
+	SetColor(reg_eax!=oldregs.eax);oldregs.eax=reg_eax;mvwprintw (dbg.win_reg,0,4,"%08X",reg_eax);
+	SetColor(reg_ebx!=oldregs.ebx);oldregs.ebx=reg_ebx;mvwprintw (dbg.win_reg,1,4,"%08X",reg_ebx);
+	SetColor(reg_ecx!=oldregs.ecx);oldregs.ecx=reg_ecx;mvwprintw (dbg.win_reg,2,4,"%08X",reg_ecx);
+	SetColor(reg_edx!=oldregs.edx);oldregs.edx=reg_edx;mvwprintw (dbg.win_reg,3,4,"%08X",reg_edx);
 
-	SetColor(reg_esi!=oldregs.esi);oldregs.esi=reg_esi;mvwprintw (cursesDbg.win_reg,0,18,"%08X",reg_esi);
-	SetColor(reg_edi!=oldregs.edi);oldregs.edi=reg_edi;mvwprintw (cursesDbg.win_reg,1,18,"%08X",reg_edi);
-	SetColor(reg_ebp!=oldregs.ebp);oldregs.ebp=reg_ebp;mvwprintw (cursesDbg.win_reg,2,18,"%08X",reg_ebp);
-	SetColor(reg_esp!=oldregs.esp);oldregs.esp=reg_esp;mvwprintw (cursesDbg.win_reg,3,18,"%08X",reg_esp);
-	SetColor(reg_eip!=oldregs.eip);oldregs.eip=reg_eip;mvwprintw (cursesDbg.win_reg,1,42,"%08X",reg_eip);
+	SetColor(reg_esi!=oldregs.esi);oldregs.esi=reg_esi;mvwprintw (dbg.win_reg,0,18,"%08X",reg_esi);
+	SetColor(reg_edi!=oldregs.edi);oldregs.edi=reg_edi;mvwprintw (dbg.win_reg,1,18,"%08X",reg_edi);
+	SetColor(reg_ebp!=oldregs.ebp);oldregs.ebp=reg_ebp;mvwprintw (dbg.win_reg,2,18,"%08X",reg_ebp);
+	SetColor(reg_esp!=oldregs.esp);oldregs.esp=reg_esp;mvwprintw (dbg.win_reg,3,18,"%08X",reg_esp);
+	SetColor(reg_eip!=oldregs.eip);oldregs.eip=reg_eip;mvwprintw (dbg.win_reg,1,42,"%08X",reg_eip);
 	
-	SetColor(SegValue(ds)!=oldsegs[ds].val);oldsegs[ds].val=SegValue(ds);mvwprintw (cursesDbg.win_reg,0,31,"%04X",SegValue(ds));
-	SetColor(SegValue(es)!=oldsegs[es].val);oldsegs[es].val=SegValue(es);mvwprintw (cursesDbg.win_reg,0,41,"%04X",SegValue(es));
-	SetColor(SegValue(fs)!=oldsegs[fs].val);oldsegs[fs].val=SegValue(fs);mvwprintw (cursesDbg.win_reg,0,51,"%04X",SegValue(fs));
-	SetColor(SegValue(gs)!=oldsegs[gs].val);oldsegs[gs].val=SegValue(gs);mvwprintw (cursesDbg.win_reg,0,61,"%04X",SegValue(gs));
-	SetColor(SegValue(ss)!=oldsegs[ss].val);oldsegs[ss].val=SegValue(ss);mvwprintw (cursesDbg.win_reg,0,71,"%04X",SegValue(ss));
-	SetColor(SegValue(cs)!=oldsegs[cs].val);oldsegs[cs].val=SegValue(cs);mvwprintw (cursesDbg.win_reg,1,31,"%04X",SegValue(cs));
+	SetColor(SegValue(ds)!=oldsegs[ds].val);oldsegs[ds].val=SegValue(ds);mvwprintw (dbg.win_reg,0,31,"%04X",SegValue(ds));
+	SetColor(SegValue(es)!=oldsegs[es].val);oldsegs[es].val=SegValue(es);mvwprintw (dbg.win_reg,0,41,"%04X",SegValue(es));
+	SetColor(SegValue(fs)!=oldsegs[fs].val);oldsegs[fs].val=SegValue(fs);mvwprintw (dbg.win_reg,0,51,"%04X",SegValue(fs));
+	SetColor(SegValue(gs)!=oldsegs[gs].val);oldsegs[gs].val=SegValue(gs);mvwprintw (dbg.win_reg,0,61,"%04X",SegValue(gs));
+	SetColor(SegValue(ss)!=oldsegs[ss].val);oldsegs[ss].val=SegValue(ss);mvwprintw (dbg.win_reg,0,71,"%04X",SegValue(ss));
+	SetColor(SegValue(cs)!=oldsegs[cs].val);oldsegs[cs].val=SegValue(cs);mvwprintw (dbg.win_reg,1,31,"%04X",SegValue(cs));
 
 	/*Individual flags*/
 	Bitu changed_flags = reg_flags ^ oldflags;
 	oldflags = reg_flags;
 
 	SetColor(changed_flags&FLAG_CF);
-	mvwprintw (cursesDbg.win_reg,1,53,"%01X",GETFLAG(CF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,53,"%01X",GETFLAG(CF) ? 1:0);
 	SetColor(changed_flags&FLAG_ZF);
-	mvwprintw (cursesDbg.win_reg,1,56,"%01X",GETFLAG(ZF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,56,"%01X",GETFLAG(ZF) ? 1:0);
 	SetColor(changed_flags&FLAG_SF);
-	mvwprintw (cursesDbg.win_reg,1,59,"%01X",GETFLAG(SF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,59,"%01X",GETFLAG(SF) ? 1:0);
 	SetColor(changed_flags&FLAG_OF);
-	mvwprintw (cursesDbg.win_reg,1,62,"%01X",GETFLAG(OF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,62,"%01X",GETFLAG(OF) ? 1:0);
 	SetColor(changed_flags&FLAG_AF);
-	mvwprintw (cursesDbg.win_reg,1,65,"%01X",GETFLAG(AF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,65,"%01X",GETFLAG(AF) ? 1:0);
 	SetColor(changed_flags&FLAG_PF);
-	mvwprintw (cursesDbg.win_reg,1,68,"%01X",GETFLAG(PF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,68,"%01X",GETFLAG(PF) ? 1:0);
 
 
 	SetColor(changed_flags&FLAG_DF);
-	mvwprintw (cursesDbg.win_reg,1,71,"%01X",GETFLAG(DF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,71,"%01X",GETFLAG(DF) ? 1:0);
 	SetColor(changed_flags&FLAG_IF);
-	mvwprintw (cursesDbg.win_reg,1,74,"%01X",GETFLAG(IF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,74,"%01X",GETFLAG(IF) ? 1:0);
 	SetColor(changed_flags&FLAG_TF);
-	mvwprintw (cursesDbg.win_reg,1,77,"%01X",GETFLAG(TF) ? 1:0);
+	mvwprintw (dbg.win_reg,1,77,"%01X",GETFLAG(TF) ? 1:0);
 
 	SetColor(changed_flags&FLAG_IOPL);
-	mvwprintw (cursesDbg.win_reg,2,72,"%01X",GETFLAG(IOPL)>>12);
+	mvwprintw (dbg.win_reg,2,72,"%01X",GETFLAG(IOPL)>>12);
 
 
 	SetColor(cpu.cpl ^ oldcpucpl);
-	mvwprintw (cursesDbg.win_reg,2,78,"%01X",cpu.cpl);
+	mvwprintw (dbg.win_reg,2,78,"%01X",cpu.cpl);
 	oldcpucpl=cpu.cpl;
 
 	if (cpu.pmode) {
-		if (reg_flags & FLAG_VM) mvwprintw(cursesDbg.win_reg,0,76,"VM86");
-		else if (cpu.code.big) mvwprintw(cursesDbg.win_reg,0,76,"Pr32");
-		else mvwprintw(cursesDbg.win_reg,0,76,"Pr16");
+		if (reg_flags & FLAG_VM) mvwprintw(dbg.win_reg,0,76,"VM86");
+		else if (cpu.code.big) mvwprintw(dbg.win_reg,0,76,"Pr32");
+		else mvwprintw(dbg.win_reg,0,76,"Pr16");
 	} else	
-		mvwprintw(cursesDbg.win_reg,0,76,"Real");
+		mvwprintw(dbg.win_reg,0,76,"Real");
 
 	// Selector info, if available
 	if ((cpu.pmode) && curSelectorName[0]) {
 		char out1[200], out2[200];
 		GetDescriptorInfo(curSelectorName,out1,out2);
-		mvwprintw(cursesDbg.win_reg,2,28,out1);
-		mvwprintw(cursesDbg.win_reg,3,28,out2);
+		mvwprintw(dbg.win_reg,2,28,out1);
+		mvwprintw(dbg.win_reg,3,28,out2);
 	}
 
-	wattrset(cursesDbg.win_reg,0);
-	mvwprintw(cursesDbg.win_reg,3,60,"%u       ",cycle_count);
-	wrefresh(cursesDbg.win_reg);
+	wattrset(dbg.win_reg,0);
+	mvwprintw(dbg.win_reg,3,60,"%u       ",cycle_count);
+	wrefresh(dbg.win_reg);
 #endif
 };
 
@@ -838,7 +838,7 @@ static void DrawCode(void) {
 		saveSel = false;
 		if (has_colors()) {
 			if ((codeViewData.useCS==SegValue(cs)) && (disEIP == reg_eip)) {
-				wattrset(cursesDbg.win_code,COLOR_PAIR(PAIR_GREEN_BLACK));
+				wattrset(dbg.win_code,COLOR_PAIR(PAIR_GREEN_BLACK));			
 				if (codeViewData.cursorPos==-1) {
 					codeViewData.cursorPos = i; // Set Cursor 
 				}
@@ -848,35 +848,35 @@ static void DrawCode(void) {
 				}
 				saveSel = (i == codeViewData.cursorPos);
 			} else if (i == codeViewData.cursorPos) {
-				wattrset(cursesDbg.win_code,COLOR_PAIR(PAIR_BLACK_GREY));
+				wattrset(dbg.win_code,COLOR_PAIR(PAIR_BLACK_GREY));			
 				codeViewData.cursorSeg = codeViewData.useCS;
 				codeViewData.cursorOfs = disEIP;
 				saveSel = true;
 			} else if (CBreakpoint::IsBreakpointDrawn(start)) {
-				wattrset(cursesDbg.win_code,COLOR_PAIR(PAIR_GREY_RED));
+				wattrset(dbg.win_code,COLOR_PAIR(PAIR_GREY_RED));			
 			} else {
-				wattrset(cursesDbg.win_code,0);
+				wattrset(dbg.win_code,0);			
 			}
 		}
 
 
 		Bitu drawsize=size=DasmI386(dline, start, disEIP, cpu.code.big);
 		bool toolarge = false;
-		mvwprintw(cursesDbg.win_code,i,0,"%04X:%04X  ",codeViewData.useCS,disEIP);
+		mvwprintw(dbg.win_code,i,0,"%04X:%04X  ",codeViewData.useCS,disEIP);
 		
 		if (drawsize>10) { toolarge = true; drawsize = 9; };
 		for (c=0;c<drawsize;c++) {
 			Bit8u value;
 			if (mem_readb_checked(start+c,&value)) value=0;
-			wprintw(cursesDbg.win_code,"%02X",value);
+			wprintw(dbg.win_code,"%02X",value);
 		}
-		if (toolarge) { waddstr(cursesDbg.win_code,".."); drawsize++; };
+		if (toolarge) { waddstr(dbg.win_code,".."); drawsize++; };
 		// Spacepad up to 20 characters
 		if(drawsize && (drawsize < 11)) {
 			line20[20 - drawsize*2] = 0;
-			waddstr(cursesDbg.win_code,line20);
+			waddstr(dbg.win_code,line20);
 			line20[20 - drawsize*2] = ' ';
-		} else waddstr(cursesDbg.win_code,line20);
+		} else waddstr(dbg.win_code,line20);
 
 		char empty_res[] = { 0 };
 		char* res = empty_res;
@@ -884,15 +884,15 @@ static void DrawCode(void) {
 		// Spacepad it up to 28 characters
 		size_t dline_len = strlen(dline);
 		if(dline_len < 28) for (c = dline_len; c < 28;c++) dline[c] = ' '; dline[28] = 0;
-		waddstr(cursesDbg.win_code,dline);
+		waddstr(dbg.win_code,dline);
 		// Spacepad it up to 20 characters
 		size_t res_len = strlen(res);
 		if(res_len && (res_len < 21)) {
-			waddstr(cursesDbg.win_code,res);
+			waddstr(dbg.win_code,res);
 			line20[20-res_len] = 0;
-			waddstr(cursesDbg.win_code,line20);
+			waddstr(dbg.win_code,line20);
 			line20[20-res_len] = ' ';
-		} else 	waddstr(cursesDbg.win_code,line20);
+		} else 	waddstr(dbg.win_code,line20);
 		
 		start+=size;
 		disEIP+=size;
@@ -903,23 +903,26 @@ static void DrawCode(void) {
 
 	codeViewData.useEIPlast = disEIP;
 	
-	wattrset(cursesDbg.win_code,0);
+	wattrset(dbg.win_code,0);
 	if (!debugging) {
-		mvwprintw(cursesDbg.win_code,10,0,"%s","(Running)");
-		wclrtoeol(cursesDbg.win_code);
+		if (has_colors()) wattrset(dbg.win_code,COLOR_PAIR(PAIR_GREEN_BLACK));
+		mvwprintw(dbg.win_code,10,0,"%s","(Running)");
+		wclrtoeol(dbg.win_code);
 	} else {
 		//TODO long lines
 		char* dispPtr = codeViewData.inputStr; 
 		char* curPtr = &codeViewData.inputStr[codeViewData.inputPos];
-		mvwprintw(cursesDbg.win_code,10,0,"%c-> %s%c",
+		mvwprintw(dbg.win_code,10,0,"%c-> %s%c",
 			(codeViewData.ovrMode?'O':'I'),dispPtr,(*curPtr?' ':'_'));
-		wclrtoeol(cursesDbg.win_code); // not correct in pdcurses if full line
+		wclrtoeol(dbg.win_code); // not correct in pdcurses if full line
+		mvwchgat(dbg.win_code,10,0,3,0,(PAIR_BLACK_GREY),NULL);
 		if (*curPtr) {
-			mvwchgat(cursesDbg.win_code,10,(curPtr-dispPtr+4),1,0,(PAIR_BLACK_GREY),NULL);
+			mvwchgat(dbg.win_code,10,(curPtr-dispPtr+4),1,0,(PAIR_BLACK_GREY),NULL);
  		} 
 	}
 
-	wrefresh(cursesDbg.win_code);
+	wattrset(dbg.win_code,0);
+	wrefresh(dbg.win_code);
 #endif
 }
 
@@ -946,39 +949,39 @@ Bit32u GetHexValue(char* str, char*& hex)
 	Bit32u	value = 0;
 	Bit32u regval = 0;
 	hex = str;
-	while (*hex==' ') hex++;
-	if (strstr(hex,"EAX")==hex) { hex+=3; regval = reg_eax; };
-	if (strstr(hex,"EBX")==hex) { hex+=3; regval = reg_ebx; };
-	if (strstr(hex,"ECX")==hex) { hex+=3; regval = reg_ecx; };
-	if (strstr(hex,"EDX")==hex) { hex+=3; regval = reg_edx; };
-	if (strstr(hex,"ESI")==hex) { hex+=3; regval = reg_esi; };
-	if (strstr(hex,"EDI")==hex) { hex+=3; regval = reg_edi; };
-	if (strstr(hex,"EBP")==hex) { hex+=3; regval = reg_ebp; };
-	if (strstr(hex,"ESP")==hex) { hex+=3; regval = reg_esp; };
-	if (strstr(hex,"EIP")==hex) { hex+=3; regval = reg_eip; };
-	if (strstr(hex,"AX")==hex) { hex+=2; regval = reg_ax; };
-	if (strstr(hex,"BX")==hex) { hex+=2; regval = reg_bx; };
-	if (strstr(hex,"CX")==hex) { hex+=2; regval = reg_cx; };
-	if (strstr(hex,"DX")==hex) { hex+=2; regval = reg_dx; };
-	if (strstr(hex,"SI")==hex) { hex+=2; regval = reg_si; };
-	if (strstr(hex,"DI")==hex) { hex+=2; regval = reg_di; };
-	if (strstr(hex,"BP")==hex) { hex+=2; regval = reg_bp; };
-	if (strstr(hex,"SP")==hex) { hex+=2; regval = reg_sp; };
-	if (strstr(hex,"IP")==hex) { hex+=2; regval = reg_ip; };
-	if (strstr(hex,"CS")==hex) { hex+=2; regval = SegValue(cs); };
-	if (strstr(hex,"DS")==hex) { hex+=2; regval = SegValue(ds); };
-	if (strstr(hex,"ES")==hex) { hex+=2; regval = SegValue(es); };
-	if (strstr(hex,"FS")==hex) { hex+=2; regval = SegValue(fs); };
-	if (strstr(hex,"GS")==hex) { hex+=2; regval = SegValue(gs); };
-	if (strstr(hex,"SS")==hex) { hex+=2; regval = SegValue(ss); };
+	while (*hex == ' ') hex++;
+	if (strncmp(hex,"EAX",3) == 0) { hex+=3; regval = reg_eax; } else
+	if (strncmp(hex,"EBX",3) == 0) { hex+=3; regval = reg_ebx; } else
+	if (strncmp(hex,"ECX",3) == 0) { hex+=3; regval = reg_ecx; } else
+	if (strncmp(hex,"EDX",3) == 0) { hex+=3; regval = reg_edx; } else
+	if (strncmp(hex,"ESI",3) == 0) { hex+=3; regval = reg_esi; } else
+	if (strncmp(hex,"EDI",3) == 0) { hex+=3; regval = reg_edi; } else
+	if (strncmp(hex,"EBP",3) == 0) { hex+=3; regval = reg_ebp; } else
+	if (strncmp(hex,"ESP",3) == 0) { hex+=3; regval = reg_esp; } else
+	if (strncmp(hex,"EIP",3) == 0) { hex+=3; regval = reg_eip; } else
+	if (strncmp(hex,"AX",2) == 0)  { hex+=2; regval = reg_ax; } else
+	if (strncmp(hex,"BX",2) == 0)  { hex+=2; regval = reg_bx; } else
+	if (strncmp(hex,"CX",2) == 0)  { hex+=2; regval = reg_cx; } else
+	if (strncmp(hex,"DX",2) == 0)  { hex+=2; regval = reg_dx; } else
+	if (strncmp(hex,"SI",2) == 0)  { hex+=2; regval = reg_si; } else
+	if (strncmp(hex,"DI",2) == 0)  { hex+=2; regval = reg_di; } else
+	if (strncmp(hex,"BP",2) == 0)  { hex+=2; regval = reg_bp; } else
+	if (strncmp(hex,"SP",2) == 0)  { hex+=2; regval = reg_sp; } else
+	if (strncmp(hex,"IP",2) == 0)  { hex+=2; regval = reg_ip; } else
+	if (strncmp(hex,"CS",2) == 0)  { hex+=2; regval = SegValue(cs); } else
+	if (strncmp(hex,"DS",2) == 0)  { hex+=2; regval = SegValue(ds); } else
+	if (strncmp(hex,"ES",2) == 0)  { hex+=2; regval = SegValue(es); } else
+	if (strncmp(hex,"FS",2) == 0)  { hex+=2; regval = SegValue(fs); } else
+	if (strncmp(hex,"GS",2) == 0)  { hex+=2; regval = SegValue(gs); } else
+	if (strncmp(hex,"SS",2) == 0)  { hex+=2; regval = SegValue(ss); };
 
 	while (*hex) {
-		if ((*hex>='0') && (*hex<='9')) value = (value<<4)+*hex-'0';
-		else if ((*hex>='A') && (*hex<='F')) value = (value<<4)+*hex-'A'+10; 
+		if      ((*hex >= '0') && (*hex <= '9')) value = (value<<4) + *hex - '0';
+		else if ((*hex >= 'A') && (*hex <= 'F')) value = (value<<4) + *hex - 'A' + 10; 
 		else { 
-			if(*hex == '+') {hex++;return regval + value + GetHexValue(hex,hex); };
-			if(*hex == '-') {hex++;return regval + value - GetHexValue(hex,hex); };
-			break; // No valid char
+			if (*hex == '+') {hex++;return regval + value + GetHexValue(hex,hex); } else
+			if (*hex == '-') {hex++;return regval + value - GetHexValue(hex,hex); }
+			else break; // No valid char
 		}
 		hex++;
 	};
@@ -989,38 +992,38 @@ bool ChangeRegister(char* str)
 {
 	char* hex = str;
 	while (*hex==' ') hex++;
-	if (strstr(hex,"EAX")==hex) { hex+=3; reg_eax = GetHexValue(hex,hex); } else
-	if (strstr(hex,"EBX")==hex) { hex+=3; reg_ebx = GetHexValue(hex,hex); } else
-	if (strstr(hex,"ECX")==hex) { hex+=3; reg_ecx = GetHexValue(hex,hex); } else
-	if (strstr(hex,"EDX")==hex) { hex+=3; reg_edx = GetHexValue(hex,hex); } else
-	if (strstr(hex,"ESI")==hex) { hex+=3; reg_esi = GetHexValue(hex,hex); } else
-	if (strstr(hex,"EDI")==hex) { hex+=3; reg_edi = GetHexValue(hex,hex); } else
-	if (strstr(hex,"EBP")==hex) { hex+=3; reg_ebp = GetHexValue(hex,hex); } else
-	if (strstr(hex,"ESP")==hex) { hex+=3; reg_esp = GetHexValue(hex,hex); } else
-	if (strstr(hex,"EIP")==hex) { hex+=3; reg_eip = GetHexValue(hex,hex); } else
-	if (strstr(hex,"AX")==hex) { hex+=2; reg_ax = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"BX")==hex) { hex+=2; reg_bx = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"CX")==hex) { hex+=2; reg_cx = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"DX")==hex) { hex+=2; reg_dx = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"SI")==hex) { hex+=2; reg_si = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"DI")==hex) { hex+=2; reg_di = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"BP")==hex) { hex+=2; reg_bp = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"SP")==hex) { hex+=2; reg_sp = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"IP")==hex) { hex+=2; reg_ip = (Bit16u)GetHexValue(hex,hex); } else
-	if (strstr(hex,"CS")==hex) { hex+=2; SegSet16(cs,(Bit16u)GetHexValue(hex,hex)); } else
-	if (strstr(hex,"DS")==hex) { hex+=2; SegSet16(ds,(Bit16u)GetHexValue(hex,hex)); } else
-	if (strstr(hex,"ES")==hex) { hex+=2; SegSet16(es,(Bit16u)GetHexValue(hex,hex)); } else
-	if (strstr(hex,"FS")==hex) { hex+=2; SegSet16(fs,(Bit16u)GetHexValue(hex,hex)); } else
-	if (strstr(hex,"GS")==hex) { hex+=2; SegSet16(gs,(Bit16u)GetHexValue(hex,hex)); } else
-	if (strstr(hex,"SS")==hex) { hex+=2; SegSet16(ss,(Bit16u)GetHexValue(hex,hex)); } else
-	if (strstr(hex,"AF")==hex) { hex+=2; SETFLAGBIT(AF,GetHexValue(hex,hex)); } else
-	if (strstr(hex,"CF")==hex) { hex+=2; SETFLAGBIT(CF,GetHexValue(hex,hex)); } else
-	if (strstr(hex,"DF")==hex) { hex+=2; SETFLAGBIT(DF,GetHexValue(hex,hex)); } else
-	if (strstr(hex,"IF")==hex) { hex+=2; SETFLAGBIT(IF,GetHexValue(hex,hex)); } else
-	if (strstr(hex,"OF")==hex) { hex+=2; SETFLAGBIT(OF,GetHexValue(hex,hex)); } else
-	if (strstr(hex,"ZF")==hex) { hex+=2; SETFLAGBIT(ZF,GetHexValue(hex,hex)); } else
-	if (strstr(hex,"PF")==hex) { hex+=2; SETFLAGBIT(PF,GetHexValue(hex,hex)); } else
-	if (strstr(hex,"SF")==hex) { hex+=2; SETFLAGBIT(SF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"EAX",3) == 0) { hex+=3; reg_eax = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"EBX",3) == 0) { hex+=3; reg_ebx = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"ECX",3) == 0) { hex+=3; reg_ecx = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"EDX",3) == 0) { hex+=3; reg_edx = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"ESI",3) == 0) { hex+=3; reg_esi = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"EDI",3) == 0) { hex+=3; reg_edi = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"EBP",3) == 0) { hex+=3; reg_ebp = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"ESP",3) == 0) { hex+=3; reg_esp = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"EIP",3) == 0) { hex+=3; reg_eip = GetHexValue(hex,hex); } else
+	if (strncmp(hex,"AX",2) == 0)  { hex+=2; reg_ax = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"BX",2) == 0)  { hex+=2; reg_bx = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"CX",2) == 0)  { hex+=2; reg_cx = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"DX",2) == 0)  { hex+=2; reg_dx = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"SI",2) == 0)  { hex+=2; reg_si = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"DI",2) == 0)  { hex+=2; reg_di = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"BP",2) == 0)  { hex+=2; reg_bp = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"SP",2) == 0)  { hex+=2; reg_sp = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"IP",2) == 0)  { hex+=2; reg_ip = (Bit16u)GetHexValue(hex,hex); } else
+	if (strncmp(hex,"CS",2) == 0)  { hex+=2; SegSet16(cs,(Bit16u)GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"DS",2) == 0)  { hex+=2; SegSet16(ds,(Bit16u)GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"ES",2) == 0)  { hex+=2; SegSet16(es,(Bit16u)GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"FS",2) == 0)  { hex+=2; SegSet16(fs,(Bit16u)GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"GS",2) == 0)  { hex+=2; SegSet16(gs,(Bit16u)GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"SS",2) == 0)  { hex+=2; SegSet16(ss,(Bit16u)GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"AF",2) == 0)  { hex+=2; SETFLAGBIT(AF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"CF",2) == 0)  { hex+=2; SETFLAGBIT(CF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"DF",2) == 0)  { hex+=2; SETFLAGBIT(DF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"IF",2) == 0)  { hex+=2; SETFLAGBIT(IF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"OF",2) == 0)  { hex+=2; SETFLAGBIT(OF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"ZF",2) == 0)  { hex+=2; SETFLAGBIT(ZF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"PF",2) == 0)  { hex+=2; SETFLAGBIT(PF,GetHexValue(hex,hex)); } else
+	if (strncmp(hex,"SF",2) == 0)  { hex+=2; SETFLAGBIT(SF,GetHexValue(hex,hex)); } else
 	{ return false; };
 	return true;
 };
@@ -1587,8 +1590,23 @@ char* AnalyzeInstruction(char* inst, bool saveSelector) {
 Bit32u DEBUG_CheckKeys(void) {
 #ifndef C_IDA_DEBUG
 	Bits ret=0;
+	bool numberrun = false;
 	int key=getch();
-	if (key>0) {
+
+	if (key >='1' && key <='5' && strlen(codeViewData.inputStr) == 0) {
+		const Bit32s v[] ={5,500,1000,5000,10000};
+		CPU_Cycles= v[key - '1'];
+
+		ret = (*cpudecoder)();
+		SetCodeWinStart();
+		CBreakpoint::ignoreOnce = 0;
+
+		/* Setup variables so we end up at the proper ret processing */
+		numberrun = true;
+		key = -1;
+	}
+
+	if (key>0 || numberrun) {
 #if defined(WIN32) && defined(__PDCURSES__)
 		switch (key) {
 		case PADENTER:	key=0x0A;	break;
@@ -1813,7 +1831,6 @@ Bit32u DEBUG_CheckKeys(void) {
 		ret=0;
 		DEBUG_DrawScreen();
 	}
-
 	return ret;
 #else
 	return 0;
@@ -2201,11 +2218,7 @@ void DEBUG_CheckExecuteBreakpoint(Bit16u seg, Bit32u off)
 	if (pDebugcom && pDebugcom->IsActive()) {
 		CBreakpoint::AddBreakpoint(seg,off,true);		
 		CBreakpoint::ActivateBreakpoints(SegPhys(cs)+reg_eip,true);	
-
 		pDebugcom = 0;
-#ifdef C_IDA_DEBUG
-		//ERIC FIXME can we safely comment out this line so we can use pDebugcom in debug_remote_inc.h
-#endif
 	};
 };
 
@@ -2234,9 +2247,9 @@ void DEBUG_SetupConsole(void) {
 //	fflush(NULL);
 	#endif	
 #endif
-	memset((void *)&cursesDbg,0,sizeof(cursesDbg));
+	memset((void *)&dbg,0,sizeof(dbg));
 	debugging=false;
-//	cursesDbg.active_win=3;
+//	dbg.active_win=3;
 	/* Start the Debug Gui */
 	DBGUI_StartUp();
 }
@@ -2455,11 +2468,11 @@ static void DrawVariables(void) {
 
 		int y = idx / 3;
 		int x = (idx % 3) * 26;
-		mvwprintw(cursesDbg.win_var, y, x, dv->GetName());
-		mvwprintw(cursesDbg.win_var, y,  (x + DEBUG_VAR_BUF_LEN + 1) , buffer);
+		mvwprintw(dbg.win_var, y, x, dv->GetName());
+		mvwprintw(dbg.win_var, y,  (x + DEBUG_VAR_BUF_LEN + 1) , buffer);
 	}
 
-	wrefresh(cursesDbg.win_var);
+	wrefresh(dbg.win_var);
 };
 #undef DEBUG_VAR_BUF_LEN
 // HEAVY DEBUGGING STUFF
@@ -2594,6 +2607,7 @@ bool DEBUG_HeavyIsBreakpoint(void) {
 			cpuLogCounter--;
 		}
 		if (cpuLogCounter<=0) {
+			cpuLogFile.flush();
 			cpuLogFile.close();
 			DEBUG_ShowMsg("DEBUG: cpu log LOGCPU.TXT created\n");
 			cpuLog = false;

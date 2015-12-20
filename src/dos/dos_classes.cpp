@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -340,7 +340,7 @@ void DOS_DTA::SetupSearch(Bit8u _sdrive,Bit8u _sattr,char * pattern) {
 }
 
 void DOS_DTA::SetResult(const char * _name,Bit32u _size,Bit16u _date,Bit16u _time,Bit8u _attr) {
-	MEM_BlockWrite(pt+offsetof(sDTA,name),(void *)_name,DOS_NAMELENGTH_ASCII);
+	MEM_BlockWrite(pt+offsetof(sDTA,name),(void *)_name,strlen(_name)+1);
 	sSave(sDTA,size,_size);
 	sSave(sDTA,date,_date);
 	sSave(sDTA,time,_time);
@@ -444,6 +444,10 @@ void DOS_FCB::SetRandom(Bit32u _random) {
 	sSave(sFCB,rndm,_random);
 }
 
+void DOS_FCB::ClearBlockRecsize(void) {
+	sSave(sFCB,cur_block,0);
+	sSave(sFCB,rec_size,0);
+}
 void DOS_FCB::FileOpen(Bit8u _fhandle) {
 	sSave(sFCB,drive,GetDrive()+1);
 	sSave(sFCB,file_handle,_fhandle);

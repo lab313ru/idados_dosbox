@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -61,10 +61,6 @@ void DEBUG_ShowMsg(char const* format,...) {
 	vsprintf(buf,format,msg);
 	va_end(msg);
 
-//ERIC
-printf("%s",buf);
-return;
-
 	/* Add newline if not present */
 	Bitu len=strlen(buf);
 	if(buf[len-1]!='\n') strcat(buf,"\n");
@@ -74,15 +70,15 @@ return;
 	if (logBuffPos!=logBuff.end()) {
 		logBuffPos=logBuff.end();
 		DEBUG_RefreshPage(0);
-//		mvwprintw(cursesDbg.win_out,cursesDbg.win_out->_maxy-1, 0, "");
+//		mvwprintw(dbg.win_out,dbg.win_out->_maxy-1, 0, "");
 	}
 	logBuff.push_back(buf);
 	if (logBuff.size() > MAX_LOG_BUFFER)
 		logBuff.pop_front();
 
 	logBuffPos = logBuff.end();
-	wprintw(cursesDbg.win_out,"%s",buf);
-	wrefresh(cursesDbg.win_out);
+	wprintw(dbg.win_out,"%s",buf);
+	wrefresh(dbg.win_out);
 }
 
 void DEBUG_RefreshPage(char scroll) {
@@ -91,21 +87,21 @@ void DEBUG_RefreshPage(char scroll) {
 	else if (scroll==1 && logBuffPos!=logBuff.end()) logBuffPos++;
 
 	list<string>::iterator i = logBuffPos;
-	int maxy, maxx; getmaxyx(cursesDbg.win_out,maxy,maxx);
+	int maxy, maxx; getmaxyx(dbg.win_out,maxy,maxx);
 	int rem_lines = maxy;
 	if(rem_lines == -1) return;
 
-	wclear(cursesDbg.win_out);
+	wclear(dbg.win_out);
 
 	while (rem_lines > 0 && i!=logBuff.begin()) {
 		--i;
 		for (string::size_type posf=0, posl; (posl=(*i).find('\n',posf)) != string::npos ;posf=posl+1)
 			rem_lines -= (int) ((posl-posf) / maxx) + 1; // len=(posl+1)-posf-1
 		/* Const cast is needed for pdcurses which has no const char in mvwprintw (bug maybe) */
-		mvwprintw(cursesDbg.win_out,rem_lines-1, 0, const_cast<char*>((*i).c_str()));
+		mvwprintw(dbg.win_out,rem_lines-1, 0, const_cast<char*>((*i).c_str()));
 	}
-	mvwprintw(cursesDbg.win_out,maxy-1, 0, "");
-	wrefresh(cursesDbg.win_out);
+	mvwprintw(dbg.win_out,maxy-1, 0, "");
+	wrefresh(dbg.win_out);
 #endif
 }
 
@@ -123,29 +119,29 @@ void LOG::operator() (char const* format, ...){
 
 
 static void Draw_RegisterLayout(void) {
-	mvwaddstr(cursesDbg.win_reg,0,0,"EAX=");
-	mvwaddstr(cursesDbg.win_reg,1,0,"EBX=");
-	mvwaddstr(cursesDbg.win_reg,2,0,"ECX=");
-	mvwaddstr(cursesDbg.win_reg,3,0,"EDX=");
+	mvwaddstr(dbg.win_reg,0,0,"EAX=");
+	mvwaddstr(dbg.win_reg,1,0,"EBX=");
+	mvwaddstr(dbg.win_reg,2,0,"ECX=");
+	mvwaddstr(dbg.win_reg,3,0,"EDX=");
 
-	mvwaddstr(cursesDbg.win_reg,0,14,"ESI=");
-	mvwaddstr(cursesDbg.win_reg,1,14,"EDI=");
-	mvwaddstr(cursesDbg.win_reg,2,14,"EBP=");
-	mvwaddstr(cursesDbg.win_reg,3,14,"ESP=");
+	mvwaddstr(dbg.win_reg,0,14,"ESI=");
+	mvwaddstr(dbg.win_reg,1,14,"EDI=");
+	mvwaddstr(dbg.win_reg,2,14,"EBP=");
+	mvwaddstr(dbg.win_reg,3,14,"ESP=");
 
-	mvwaddstr(cursesDbg.win_reg,0,28,"DS=");
-	mvwaddstr(cursesDbg.win_reg,0,38,"ES=");
-	mvwaddstr(cursesDbg.win_reg,0,48,"FS=");
-	mvwaddstr(cursesDbg.win_reg,0,58,"GS=");
-	mvwaddstr(cursesDbg.win_reg,0,68,"SS=");
+	mvwaddstr(dbg.win_reg,0,28,"DS=");
+	mvwaddstr(dbg.win_reg,0,38,"ES=");
+	mvwaddstr(dbg.win_reg,0,48,"FS=");
+	mvwaddstr(dbg.win_reg,0,58,"GS=");
+	mvwaddstr(dbg.win_reg,0,68,"SS=");
 
-	mvwaddstr(cursesDbg.win_reg,1,28,"CS=");
-	mvwaddstr(cursesDbg.win_reg,1,38,"EIP=");
+	mvwaddstr(dbg.win_reg,1,28,"CS=");
+	mvwaddstr(dbg.win_reg,1,38,"EIP=");
 
-	mvwaddstr(cursesDbg.win_reg,2,75,"CPL");
-	mvwaddstr(cursesDbg.win_reg,2,68,"IOPL");
+	mvwaddstr(dbg.win_reg,2,75,"CPL");
+	mvwaddstr(dbg.win_reg,2,68,"IOPL");
 
-	mvwaddstr(cursesDbg.win_reg,1,52,"C  Z  S  O  A  P  D  I  T ");
+	mvwaddstr(dbg.win_reg,1,52,"C  Z  S  O  A  P  D  I  T ");
 }
 
 
@@ -154,15 +150,15 @@ static void DrawBars(void) {
 		attrset(COLOR_PAIR(PAIR_BLACK_BLUE));
 	}
 	/* Show the Register bar */
-	mvaddstr(1-1,0, "---(Register Overview                   )---");
+	mvaddstr(1-1,0, "-----(Register Overview                   )-----                                ");
 	/* Show the Data Overview bar perhaps with more special stuff in the end */
-	mvaddstr(6-1,0,"---(Data Overview   Scroll: page up/down)---");
-	/* Show the Code Overview perhaps with special stuff in bar too */
-	mvaddstr(17-1,0,"---(Code Overview   Scroll: up/down     )---");
+	mvaddstr(6-1,0, "-----(Data Overview   Scroll: page up/down)-----                                ");
+	/* Show the Code Overview perhaps with special stuff in bar too */  
+	mvaddstr(15-1,0,"-----(Code Overview   Scroll: up/down     )-----                                ");
 	/* Show the Variable Overview bar */
-	mvaddstr(29-1,0, "---(Variable Overview                   )---");
+	mvaddstr(27-1,0,"-----(Variable Overview                   )-----                                ");
 	/* Show the Output OverView */
-	mvaddstr(34-1,0, "---(Output          Scroll: home/end    )---");
+	mvaddstr(32-1,0,"-----(Output          Scroll: home/end    )-----                                ");
 	attrset(0);
 	//Match values with below. So we don't need to touch the internal window structures
 }
@@ -173,25 +169,25 @@ static void MakeSubWindows(void) {
 #ifndef C_IDA_DEBUG
 	/* The Std output win should go at the bottom */
 	/* Make all the subwindows */
-	int win_main_maxy, win_main_maxx; getmaxyx(cursesDbg.win_main,win_main_maxy,win_main_maxx);
+	int win_main_maxy, win_main_maxx; getmaxyx(dbg.win_main,win_main_maxy,win_main_maxx);
 	int outy=1; //Match values with above
 	/* The Register window  */
-	cursesDbg.win_reg=subwin(cursesDbg.win_main,4,win_main_maxx,outy,0);
+	dbg.win_reg=subwin(dbg.win_main,4,win_main_maxx,outy,0);
 	outy+=5; // 6
 	/* The Data Window */
-	cursesDbg.win_data=subwin(cursesDbg.win_main,10,win_main_maxx,outy,0);
-	outy+=11; // 17
+	dbg.win_data=subwin(dbg.win_main,8,win_main_maxx,outy,0);
+	outy+=9; // 15
 	/* The Code Window */
-	cursesDbg.win_code=subwin(cursesDbg.win_main,11,win_main_maxx,outy,0);
-	outy+=12; // 29
+	dbg.win_code=subwin(dbg.win_main,11,win_main_maxx,outy,0);
+	outy+=12; // 27
 	/* The Variable Window */
-	cursesDbg.win_var=subwin(cursesDbg.win_main,4,win_main_maxx,outy,0);
-	outy+=5; // 34
+	dbg.win_var=subwin(dbg.win_main,4,win_main_maxx,outy,0);
+	outy+=5; // 32
 	/* The Output Window */	
-	cursesDbg.win_out=subwin(cursesDbg.win_main,win_main_maxy-outy,win_main_maxx,outy,0);
-	if(!cursesDbg.win_reg ||!cursesDbg.win_data || !cursesDbg.win_code || !cursesDbg.win_var || !cursesDbg.win_out) E_Exit("Setting up windows failed");
-//	cursesDbg.input_y=win_main_maxy-1;
-	scrollok(cursesDbg.win_out,TRUE);
+	dbg.win_out=subwin(dbg.win_main,win_main_maxy-outy,win_main_maxx,outy,0);
+	if(!dbg.win_reg ||!dbg.win_data || !dbg.win_code || !dbg.win_var || !dbg.win_out) E_Exit("Setting up windows failed");
+//	dbg.input_y=win_main_maxy-1;
+	scrollok(dbg.win_out,TRUE);
 	DrawBars();
 	Draw_RegisterLayout();
 	refresh();
@@ -207,20 +203,21 @@ static void MakePairs(void) {
 }
 static void LOG_Destroy(Section*) {
 	if(debuglog) fclose(debuglog);
+	debuglog = 0;
 }
 
 static void LOG_Init(Section * sec) {
-	Section_prop * sect=static_cast<Section_prop *>(sec);
-	const char * blah=sect->Get_string("logfile");
-	if(blah && blah[0] &&(debuglog = fopen(blah,"wt+"))){
-	}else{
-		debuglog=0;
+	Section_prop * sect = static_cast<Section_prop *>(sec);
+	const char * blah = sect->Get_string("logfile");
+	if(blah && blah[0] && (debuglog = fopen(blah,"wt+"))){
+		;
+	} else {
+		debuglog = 0;
 	}
 	sect->AddDestroyFunction(&LOG_Destroy);
-	char buf[1024];
-	for (Bitu i=1;i<LOG_MAX;i++) {
-		strcpy(buf,loggrp[i].front);
-		buf[strlen(buf)]=0;
+	char buf[64];
+	for (Bitu i = LOG_ALL + 1;i < LOG_MAX;i++) { //Skip LOG_ALL, it is always enabled
+		safe_strncpy(buf,loggrp[i].front,sizeof(buf));
 		lowcase(buf);
 		loggrp[i].enabled=sect->Get_bool(buf);
 	}
@@ -263,9 +260,9 @@ void LOG_StartUp(void) {
 	Section_prop * sect=control->AddSection_prop("log",LOG_Init);
 	Prop_string* Pstring = sect->Add_string("logfile",Property::Changeable::Always,"");
 	Pstring->Set_help("file where the log messages will be saved to");
-	char buf[1024];
-	for (Bitu i=1;i<LOG_MAX;i++) {
-		strcpy(buf,loggrp[i].front);
+	char buf[64];
+	for (Bitu i = LOG_ALL + 1;i < LOG_MAX;i++) {
+		safe_strncpy(buf,loggrp[i].front, sizeof(buf));
 		lowcase(buf);
 		Prop_bool* Pbool = sect->Add_bool(buf,Property::Changeable::Always,true);
 		Pbool->Set_help("Enable/Disable logging of this type.");
@@ -279,16 +276,16 @@ void LOG_StartUp(void) {
 void DBGUI_StartUp(void) {
 #ifndef C_IDA_DEBUG
 	/* Start the main window */
-	cursesDbg.win_main=initscr();
+	dbg.win_main=initscr();
 	cbreak();       /* take input chars one at a time, no wait for \n */
 	noecho();       /* don't echo input */
-	nodelay(cursesDbg.win_main,true);
-	keypad(cursesDbg.win_main,true);
+	nodelay(dbg.win_main,true);
+	keypad(dbg.win_main,true);
 	#ifndef WIN32
 	printf("\e[8;50;80t");
 	fflush(NULL);
 	resizeterm(50,80);
-	touchwin(cursesDbg.win_main);
+	touchwin(dbg.win_main);
 	#endif
 	old_cursor_state = curs_set(0);
 	start_color();

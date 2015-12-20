@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,7 +32,11 @@
 #include <ntddcdrm.h>			// Ioctl stuff
 #include <ntddscsi.h>
 #include <winioctl.h>			// Ioctl stuff
-#else 
+#elif (defined __MINGW64_VERSION_MAJOR)
+#include <winioctl.h>			// Ioctl stuff
+#include <ntddcdrm.h>			// Ioctl stuff
+#include <ntddscsi.h>
+#else
 #include "ddk/ntddcdrm.h"		// Ioctl stuff
 #include "ddk/ntddscsi.h"
 #endif

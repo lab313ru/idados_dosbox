@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -86,7 +86,7 @@ public:
 	Value(char const * const in) :_string(new std::string(in)),type(V_STRING) { };
 	Value(Value const& in):_string(0) {plaincopy(in);}
 	~Value() { destroy();};
-	Value(std::string const& in,Etype _t) :_string(0),type(V_NONE) {SetValue(in,_t);}
+	Value(std::string const& in,Etype _t) :_hex(0),_bool(false),_int(0),_string(0),_double(0),type(V_NONE) {SetValue(in,_t);}
 	
 	/* Assigment operators */
 	Value& operator= (Hex in) throw(WrongType)                { return copy(Value(in));}
@@ -294,10 +294,10 @@ public:
 class Prop_multival:public Property{
 protected:
 	Section_prop* section;
-	std::string seperator;
+	std::string separator;
 	void make_default_value();
 public:
-	Prop_multival(std::string const& _propname, Changeable::Value when,std::string const& sep):Property(_propname,when), section(new Section_prop("")),seperator(sep) {
+	Prop_multival(std::string const& _propname, Changeable::Value when,std::string const& sep):Property(_propname,when), section(new Section_prop("")),separator(sep) {
 		default_value = value = "";
 	}
 	Section_prop *GetSection() { return section; }

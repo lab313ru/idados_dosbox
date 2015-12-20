@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -730,6 +730,20 @@ public:
 	}
 };
 
+class VGA_HERC_Handler : public PageHandler {
+public:
+	VGA_HERC_Handler() {
+		flags=PFLAG_READABLE|PFLAG_WRITEABLE;
+	}
+	HostPt GetHostReadPt(Bitu phys_page) {
+		// The 4kB map area is repeated in the 32kB range
+		return &vga.mem.linear[0];
+	}
+	HostPt GetHostWritePt(Bitu phys_page) {
+		return GetHostReadPt( phys_page );
+	}
+};
+
 class VGA_Empty_Handler : public PageHandler {
 public:
 	VGA_Empty_Handler() {
@@ -754,6 +768,7 @@ static struct vg {
 	VGA_UnchainedEGA_Handler	uega;
 	VGA_UnchainedVGA_Handler	uvga;
 	VGA_PCJR_Handler			pcjr;
+	VGA_HERC_Handler			herc;
 	VGA_LIN4_Handler			lin4;
 	VGA_LFB_Handler				lfb;
 	VGA_LFBChanges_Handler		lfbchanges;
@@ -788,8 +803,12 @@ void VGA_SetupHandlers(void) {
 			MEM_SetPageHandler(VGA_PAGE_B0,16,&vgaph.map);
 		} else {
 			vgapages.mask=0x7fff;
-			/* With hercules in 32kb mode it leaves a memory hole on 0xb800 */
-			MEM_SetPageHandler(VGA_PAGE_B0,8,&vgaph.map);
+			// With hercules in 32kB mode it leaves a memory hole on 0xb800
+			// and has MDA-compatible address wrapping when graphics are disabled
+			if (vga.herc.enable_bits & 0x1)
+				MEM_SetPageHandler(VGA_PAGE_B0,8,&vgaph.map);
+			else
+				MEM_SetPageHandler(VGA_PAGE_B0,8,&vgaph.herc);
 			MEM_SetPageHandler(VGA_PAGE_B8,8,&vgaph.empty);
 		}
 		goto range_done;

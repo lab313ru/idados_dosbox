@@ -24,7 +24,6 @@ dnl perharps join this with the other target depended checks. move them upwards
 if test x$host = xi386-pc-os2-emx ; then
     CXXFLAGS="$CXXFLAGS -Zmt"
     LDFLAGS="$LDFLAGS -Zomf -Zmt"
-    LIBS="$LIBS -los2me"
 fi
 
 dnl Check for SDL
@@ -34,7 +33,7 @@ AM_PATH_SDL($SDL_VERSION,
 	    AC_MSG_ERROR([*** SDL version $SDL_VERSION not found!])
 )
 LIBS="$LIBS $SDL_LIBS"
-CPPFLAGS="$CPPFLAGS -I/usr/local/include $SDL_CFLAGS"
+CPPFLAGS="$CPPFLAGS $SDL_CFLAGS"
 
 dnl Check if SDL is 1.2.x (1.3 not supported)
 AC_MSG_CHECKING([SDL version only being 1.2.X])
@@ -129,6 +128,12 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <math.h>]],[[
 ]])], [AC_MSG_RESULT(yes)], [AC_DEFINE([DB_HAVE_NO_POWF],[1],[libm doesn't include powf])])
 LIBS=$LIBS_BACKUP
 
+dnl Look for clock_gettime, a DB_HAVE_CLOCK_GETTIME is set when present
+AH_TEMPLATE([DB_HAVE_CLOCK_GETTIME],[Determines if the function clock_gettime is available.])
+AC_SEARCH_LIBS([clock_gettime], [rt] , [found_clock_gettime=yes], [found_clock_gettime=no])
+if test x$found_clock_gettime = xyes; then
+  AC_DEFINE(DB_HAVE_CLOCK_GETTIME)
+fi
 
 dnl Checks for libraries.
 
@@ -146,7 +151,7 @@ CFLAGS="-Werror"
 
 AH_TEMPLATE([C_ATTRIBUTE_ALWAYS_INLINE],[Determines if the compilers supports always_inline attribute.])
 AC_MSG_CHECKING(if compiler allows __attribute__((always_inline)) )
-AC_COMPILE_IFELSE([AC_LANG_SOURCE([ void __attribute__((always_inline)) test(){}
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([ inline void __attribute__((always_inline)) test(){}
 ])],[ AC_MSG_RESULT(yes);AC_DEFINE(C_ATTRIBUTE_ALWAYS_INLINE)],AC_MSG_RESULT(no))
 
 AH_TEMPLATE([C_ATTRIBUTE_FASTCALL],[Determines if the compilers supports fastcall attribute.])
@@ -200,15 +205,9 @@ fi
 #Check for big endian machine, should #define WORDS_BIGENDIAN if so
 AC_C_BIGENDIAN
 
-AC_ARG_WITH(ida_sdk,AC_HELP_STRING([--with-ida-sdk=path],[Path of IDA SDK]))
-AC_ARG_WITH(ida_plugin,AC_HELP_STRING([--with-ida-plugin=path],[Path of IDA/dosbox plugin]))
-
 #Features to enable/disable
 AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses])
 AH_TEMPLATE(C_HEAVY_DEBUG,[Define to 1 to enable heavy debugging, also have to enable C_DEBUG])
-AH_TEMPLATE(C_IDA_DEBUG,[Define to 1 to enable remote IDA debugger])
-AH_TEMPLATE(C_IDA_64BIT,[Define to 1 to enable 64bit IDA support])
-ida=no
 AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
    AC_CHECK_HEADER(curses.h,have_curses_h=yes,)
    AC_CHECK_LIB(curses, initscr, have_curses_lib=yes, , )
@@ -222,20 +221,6 @@ AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
      AC_DEFINE(C_DEBUG,1)
      if test x$enable_debug = xheavy ; then 
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida -o x$enable_debug = xida32; then
-       AC_MSG_RESULT([Building remote debugger (32 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,0)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
-     elif test x$enable_debug = xida64; then
-       AC_MSG_RESULT([Building remote debugger (64 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,1)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
      fi
    elif test x$have_ncurses_lib = xyes -a x$have_curses_h = xyes ; then
      LIBS="$LIBS -lncurses"
@@ -248,50 +233,11 @@ AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
      AC_DEFINE(C_DEBUG,1)
      if test x$enable_debug = xheavy ; then 
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida -o x$enable_debug = xida32; then
-       AC_MSG_RESULT([Building remote debugger (32 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,0)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
-     elif test x$enable_debug = xida64; then
-       AC_MSG_RESULT([Building remote debugger (64 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,1)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
      fi
    else 
      AC_MSG_ERROR([Can't find curses, which is required for debug mode])
    fi
 ],)
-
-if test x$ida = xyes; then
-  AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
-  IDA_SDK="$with_ida_sdk"
-  AC_SUBST(IDA_SDK)
-
-  if test x$with_ida_plugin != x; then
-    ida_plugin=$with_ida_plugin
-    AC_CHECK_FILE($ida_plugin/dosbox_debmod.cpp,,AC_MSG_ERROR([IDA plugin not found. Check --with-ida-plugin.]))
-  else
-    ida_plugin_found=yes
-    AC_CHECK_FILE($with_ida_sdk/plugins/debugger/dosbox_debmod.cpp,ida_plugin=$ida_plugin/plugins/debugger,ida_plugin_found=no)
-    if test x$ida_plugin_found = xno; then
-      AC_CHECK_FILE(ida/dosbox_debmod.cpp,ida_plugin=../../ida,AC_MSG_ERROR([IDA plugin not found. Use --with-ida-plugin.]))
-    fi
-  fi
-  IDA_PLUGIN=$ida_plugin
-  AC_SUBST(IDA_PLUGIN)
-  IDA_LDADD="-L$with_ida_sdk/bin -lida"
-  AC_SUBST(IDA_LDADD)
-  AM_CONDITIONAL(DEBUG_IDA, true)
-else
-  AM_CONDITIONAL(DEBUG_IDA, false)
-fi
-
 
 AH_TEMPLATE(C_CORE_INLINE,[Define to 1 to use inlined memory functions in cpu core])
 AC_ARG_ENABLE(core-inline,AC_HELP_STRING([--enable-core-inline],[Enable inlined memory handling in CPU Core]),[
@@ -387,10 +333,11 @@ else
   AC_MSG_RESULT(no)
 fi 
 
-AH_TEMPLATE(C_FPU_X86,[Define to 1 to use a x86 assembly fpu core])
+AH_TEMPLATE(C_FPU_X86,[Define to 1 to use a x86/x64 assembly fpu core])
 AC_ARG_ENABLE(fpu-x86,AC_HELP_STRING([--disable-fpu-x86],[Disable x86 assembly fpu core]),,enable_fpu_x86=yes)
-AC_MSG_CHECKING(whether x86 assembly fpu core will be enabled) 
-if test x$enable_fpu_x86 = xno ; then 
+AC_ARG_ENABLE(fpu-x64,AC_HELP_STRING([--disable-fpu-x64],[Disable x64 assembly fpu core]),,enable_fpu_x64=yes)
+AC_MSG_CHECKING(whether the x86/x64 assembly fpu core will be enabled) 
+if test x$enable_fpu_x86 = xno -o x$enable_fpu_x64 = xno; then 
    AC_MSG_RESULT(no)
 else
   if test x$enable_fpu = xyes; then
@@ -525,10 +472,6 @@ dnl Some target detection and actions for them
 case "$host" in
     *-*-cygwin* | *-*-mingw32*)
        LIBS="$LIBS -lwinmm"
-       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
-         CPPFLAGS="$CPPFLAGS -D__NT__"
-         LIBS="$LIBS -lwsock32"
-       fi
        AC_CHECK_HEADERS(ddraw.h)
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2 only).])
        if test x$have_sdl_net_lib = xyes -a x$have_sdl_net_h = xyes ; then
@@ -543,17 +486,11 @@ case "$host" in
        AC_DEFINE(MACOSX, 1, [Compiling on Mac OS X])
        LIBS="$LIBS -framework CoreMIDI -framework AudioUnit -framework AudioToolbox"
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).])
-       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
-         CPPFLAGS="$CPPFLAGS -D__MAC__"
-       fi
        ;;
     *-*-linux*)
        AC_DEFINE(LINUX, 1, [Compiling on GNU/Linux])
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).])
-       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
-         CPPFLAGS="$CPPFLAGS -D__LINUX__"
-       fi
-        ;;
+       ;;
     *-*-freebsd* | *-*-dragonfly* | *-*-netbsd* | *-*-openbsd*)
        dnl Disabled directserial for now. It doesn't do anything without
        dnl specifying an extra ifdef in directserial_posix.*

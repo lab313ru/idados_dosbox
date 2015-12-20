@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -155,6 +155,8 @@ static void EGA16_FillRow(Bit8u cleft,Bit8u cright,Bit8u row,PhysPt base,Bit8u a
 	IO_Write(0x3ce,0x8);IO_Write(0x3cf,0xff);
 	IO_Write(0x3ce,0x0);IO_Write(0x3cf,attr);
 	IO_Write(0x3ce,0x1);IO_Write(0x3cf,0xf);
+	/* Enable all Write planes */
+	IO_Write(0x3c4,2);IO_Write(0x3c5,0xf);
 	/* Write some bytes */
 	Bit8u cheight = real_readb(BIOSMEM_SEG,BIOSMEM_CHAR_HEIGHT);
 	PhysPt dest=base+(CurMode->twidth*row)*cheight+cleft;	

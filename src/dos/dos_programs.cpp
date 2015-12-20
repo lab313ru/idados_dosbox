@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,6 +36,8 @@
 #include "bios_disk.h" 
 #include "setup.h"
 #include "control.h"
+#include "inout.h"
+#include "dma.h"
 
 
 #if defined(OS2)
@@ -67,7 +69,7 @@ public:
 		for (int d = 0;d < DOS_DRIVES;d++) {
 			if (!Drives[d]) continue;
 
-			char root[4] = {'A'+d,':','\\',0};
+			char root[7] = {'A'+d,':','\\','*','.','*',0};
 			bool ret = DOS_FindFirst(root,DOS_ATTR_VOLUME);
 			if (ret) {
 				dta.GetResult(name,size,date,time,attr);
@@ -107,6 +109,8 @@ public:
 			WriteOut(MSG_Get("PROGRAM_CONFIG_SECURE_DISALLOW"));
 			return;
 		}
+		bool path_relative_to_last_config = false;
+		if (cmd->FindExist("-pr",true)) path_relative_to_last_config = true;
 
 		/* Check for unmounting */
 		if (cmd->FindString("-u",umount,false)) {
@@ -243,10 +247,17 @@ public:
 
 			if (!cmd->FindCommand(2,temp_line)) goto showusage;
 			if (!temp_line.size()) goto showusage;
+			if(path_relative_to_last_config && control->configfiles.size() && !Cross::IsPathAbsolute(temp_line)) {
+				std::string lastconfigdir(control->configfiles[control->configfiles.size()-1]);
+				std::string::size_type pos = lastconfigdir.rfind(CROSS_FILESPLIT);
+				if(pos == std::string::npos) pos = 0; //No directory then erase string
+				lastconfigdir.erase(pos);
+				if (lastconfigdir.length())	temp_line = lastconfigdir + CROSS_FILESPLIT + temp_line;
+			}
 			struct stat test;
 			//Win32 : strip tailing backslashes
 			//os2: some special drive check
-			//rest: substiture ~ for home
+			//rest: substitute ~ for home
 			bool failed = false;
 #if defined (WIN32) || defined(OS2)
 			/* Removing trailing backslash if not root dir so stat will succeed */
@@ -590,7 +601,7 @@ public:
 		FILE *usefile_1=NULL;
 		FILE *usefile_2=NULL;
 		Bitu i=0; 
-		Bit32u floppysize;
+		Bit32u floppysize=0;
 		Bit32u rombytesize_1=0;
 		Bit32u rombytesize_2=0;
 		Bit8u drive = 'A';
@@ -824,6 +835,9 @@ public:
 			RemoveEMSPageFrame();
 			WriteOut(MSG_Get("PROGRAM_BOOT_BOOT"), drive);
 			for(i=0;i<512;i++) real_writeb(0, 0x7c00 + i, bootarea.rawdata[i]);
+
+			/* create appearance of floppy drive DMA usage (Demon's Forge) */
+			if (!IS_TANDY_ARCH && floppysize!=0) GetDMAChannel(2)->tcount=true;
 
 			/* revector some dos-allocated interrupts */
 			real_writed(0,0x01*4,0xf000ff53);
@@ -1117,7 +1131,7 @@ public:
 			if (type=="floppy") {
 				mediaid=0xF0;		
 			} else if (type=="iso") {
-				str_size=="2048,1,60000,0";	// ignored, see drive_iso.cpp (AllocationInfo)
+				//str_size="2048,1,65535,0";	// ignored, see drive_iso.cpp (AllocationInfo)
 				mediaid=0xF8;		
 				fstype = "iso";
 			} 
@@ -1282,7 +1296,7 @@ public:
 				for(ct = 0; ct < imgDisks.size(); ct++) {
 					DriveManager::CycleAllDisks();
 
-					char root[4] = {drive, ':', '\\', 0};
+					char root[7] = {drive,':','\\','*','.','*',0};
 					DOS_FindFirst(root, DOS_ATTR_VOLUME); // force obtaining the label and saving it in dirCache
 				}
 				dos.dta(save_dta);
@@ -1498,12 +1512,13 @@ void DOS_SetupPrograms(void) {
 	MSG_Add("PROGRAM_LOADFIX_ERROR","Memory allocation error.\n");
 
 	MSG_Add("MSCDEX_SUCCESS","MSCDEX installed.\n");
-	MSG_Add("MSCDEX_ERROR_MULTIPLE_CDROMS","MSCDEX: Failure: Drive-letters of multiple CDRom-drives have to be continuous.\n");
+	MSG_Add("MSCDEX_ERROR_MULTIPLE_CDROMS","MSCDEX: Failure: Drive-letters of multiple CD-ROM drives have to be continuous.\n");
 	MSG_Add("MSCDEX_ERROR_NOT_SUPPORTED","MSCDEX: Failure: Not yet supported.\n");
+	MSG_Add("MSCDEX_ERROR_PATH","MSCDEX: Specified location is not a CD-ROM drive.\n");
 	MSG_Add("MSCDEX_ERROR_OPEN","MSCDEX: Failure: Invalid file or unable to open.\n");
-	MSG_Add("MSCDEX_TOO_MANY_DRIVES","MSCDEX: Failure: Too many CDRom-drives (max: 5). MSCDEX Installation failed.\n");
+	MSG_Add("MSCDEX_TOO_MANY_DRIVES","MSCDEX: Failure: Too many CD-ROM drives (max: 5). MSCDEX Installation failed.\n");
 	MSG_Add("MSCDEX_LIMITED_SUPPORT","MSCDEX: Mounted subdirectory: limited support.\n");
-	MSG_Add("MSCDEX_INVALID_FILEFORMAT","MSCDEX: Failure: File is either no iso/cue image or contains errors.\n");
+	MSG_Add("MSCDEX_INVALID_FILEFORMAT","MSCDEX: Failure: File is either no ISO/CUE image or contains errors.\n");
 	MSG_Add("MSCDEX_UNKNOWN_ERROR","MSCDEX: Failure: Unknown error.\n");
 
 	MSG_Add("PROGRAM_RESCAN_SUCCESS","Drive cache cleared.\n");
@@ -1517,7 +1532,7 @@ void DOS_SetupPrograms(void) {
 		"For information about special keys type \033[34;1mintro special\033[0m\n"
 		"For more information about DOSBox, go to \033[34;1mhttp://www.dosbox.com/wiki\033[0m\n"
 		"\n"
-		"\033[31;1mDOSBox will stop/exit without a warning if an error occured!\033[0m\n"
+		"\033[31;1mDOSBox will stop/exit without a warning if an error occurred!\033[0m\n"
 		"\n"
 		"\n"
 		);
@@ -1531,9 +1546,9 @@ void DOS_SetupPrograms(void) {
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mmount c c:\\dosprogs\\\033[37m will create a C drive with c:\\dosprogs as contents.\xBA\n"
+		"\xBA \033[32mmount c c:\\dosgames\\\033[37m will create a C drive with c:\\dosgames as contents.\xBA\n"
 		"\xBA                                                                         \xBA\n"
-		"\xBA \033[32mc:\\dosprogs\\\033[37m is an example. Replace it with your own games directory.  \033[37m \xBA\n"
+		"\xBA \033[32mc:\\dosgames\\\033[37m is an example. Replace it with your own games directory.  \033[37m \xBA\n"
 		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
@@ -1542,9 +1557,9 @@ void DOS_SetupPrograms(void) {
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mmount c ~/dosprogs\033[37m will create a C drive with ~/dosprogs as contents.\xBA\n"
+		"\xBA \033[32mmount c ~/dosgames\033[37m will create a C drive with ~/dosgames as contents.\xBA\n"
 		"\xBA                                                                      \xBA\n"
-		"\xBA \033[32m~/dosprogs\033[37m is an example. Replace it with your own games directory.\033[37m  \xBA\n"
+		"\xBA \033[32m~/dosgames\033[37m is an example. Replace it with your own games directory.\033[37m  \xBA\n"
 		"\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
