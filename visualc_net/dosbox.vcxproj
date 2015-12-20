@@ -58,7 +58,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\idados\;..\..\..\debugger\;..\..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\idados\;..\..\debugger\;..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;C_IDA_DEBUG;__NT__;__IDP__;__PLUGIN__;NO_OBSOLETE_FUNCS;_WINSOCK_DEPRECATED_NO_WARNINGS;__SINGLE_THREADED_SERVER__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -83,7 +83,7 @@
       <ProgramDatabaseFile>.\Debug/dosbox.pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
       <IgnoreSpecificDefaultLibraries>LIBCMT.lib</IgnoreSpecificDefaultLibraries>
       <AdditionalOptions>/ignore:4098 /ignore:4006 /ignore:4088 %(AdditionalOptions)</AdditionalOptions>
@@ -105,7 +105,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <OmitFramePointers>true</OmitFramePointers>
-      <AdditionalIncludeDirectories>..\..\idados\;..\..\..\debugger\;..\..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\idados\;..\..\debugger\;..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;C_IDA_DEBUG;__NT__;__IDP__;__PLUGIN__;NO_OBSOLETE_FUNCS;_WINSOCK_DEPRECATED_NO_WARNINGS;__SINGLE_THREADED_SERVER__;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
@@ -135,7 +135,7 @@
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
       <FixedBaseAddress>false</FixedBaseAddress>
-      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
       <AdditionalOptions>/ignore:4098 /ignore:4006 /ignore:4088 /ignore:4204 %(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>
@@ -151,14 +151,14 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\debugger\debmod.cpp" />
-    <ClCompile Include="..\..\..\debugger\pc_debmod.cpp" />
-    <ClCompile Include="..\..\..\debugger\rpc_engine.cpp" />
-    <ClCompile Include="..\..\..\debugger\rpc_hlp.cpp" />
-    <ClCompile Include="..\..\..\debugger\rpc_server.cpp" />
-    <ClCompile Include="..\..\..\debugger\tcpip.cpp" />
-    <ClCompile Include="..\..\..\debugger\util.cpp" />
-    <ClCompile Include="..\..\idados\dosbox_debmod.cpp" />
+    <ClCompile Include="..\..\debugger\debmod.cpp" />
+    <ClCompile Include="..\..\debugger\pc_debmod.cpp" />
+    <ClCompile Include="..\..\debugger\rpc_engine.cpp" />
+    <ClCompile Include="..\..\debugger\rpc_hlp.cpp" />
+    <ClCompile Include="..\..\debugger\rpc_server.cpp" />
+    <ClCompile Include="..\..\debugger\tcpip.cpp" />
+    <ClCompile Include="..\..\debugger\util.cpp" />
+    <ClCompile Include="..\idados\dosbox_debmod.cpp" />
     <ClCompile Include="..\src\cpu\callback.cpp" />
     <ClCompile Include="..\src\cpu\core_dynrec.cpp" />
     <ClCompile Include="..\src\cpu\core_dyn_x86.cpp" />
