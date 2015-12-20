@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -18,13 +18,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
@@ -50,7 +50,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>__NT__;__IDP__;NO_OBSOLETE_FUNCS;__PLUGIN__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>..\dosbox\src\platform\visualc\;..\dosbox\include\;..\debugger\;..\..\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\dosbox\src\platform\visualc\;..\dosbox\include\;..\..\debugger\;..\..\..\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4005;4244;4018</DisableSpecificWarnings>
       <ForcedIncludeFiles>
       </ForcedIncludeFiles>
@@ -60,7 +60,7 @@
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>ida.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SubSystem>Windows</SubSystem>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
@@ -73,7 +73,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>false</SDLCheck>
-      <AdditionalIncludeDirectories>..\dosbox\src\platform\visualc\;..\dosbox\include\;..\debugger\;..\..\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\dosbox\src\platform\visualc\;..\dosbox\include\;..\..\debugger\;..\..\..\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__NT__;__IDP__;NO_OBSOLETE_FUNCS;__PLUGIN__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <DisableSpecificWarnings>4005;4244;4018</DisableSpecificWarnings>
@@ -83,21 +83,21 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>ida.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SubSystem>Windows</SubSystem>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\debugger\debmod.cpp" />
-    <ClCompile Include="..\debugger\pc_debmod.cpp" />
-    <ClCompile Include="..\debugger\rpc_client.cpp" />
-    <ClCompile Include="..\debugger\rpc_debmod.cpp" />
-    <ClCompile Include="..\debugger\rpc_engine.cpp" />
-    <ClCompile Include="..\debugger\rpc_hlp.cpp" />
-    <ClCompile Include="..\debugger\tcpip.cpp" />
-    <ClCompile Include="..\debugger\util.cpp" />
+    <ClCompile Include="..\..\debugger\debmod.cpp" />
+    <ClCompile Include="..\..\debugger\pc_debmod.cpp" />
+    <ClCompile Include="..\..\debugger\rpc_client.cpp" />
+    <ClCompile Include="..\..\debugger\rpc_debmod.cpp" />
+    <ClCompile Include="..\..\debugger\rpc_engine.cpp" />
+    <ClCompile Include="..\..\debugger\rpc_hlp.cpp" />
+    <ClCompile Include="..\..\debugger\tcpip.cpp" />
+    <ClCompile Include="..\..\debugger\util.cpp" />
     <ClCompile Include="dosbox_rstub.cpp" />
     <ClCompile Include="rpc_debmod_dosbox.cpp" />
   </ItemGroup>
