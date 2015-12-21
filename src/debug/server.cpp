@@ -340,7 +340,7 @@ int idados_init()
   if ( listen(listen_socket, SOMAXCONN) == SOCKET_ERROR )
     neterr(irs, "listen");
 
-  hostent *local_host = gethostbyname("");
+  hostent *local_host = gethostbyname("localhost");
   if ( local_host != NULL )
   {
     const char *local_ip = inet_ntoa(*(struct in_addr *)*local_host->h_addr_list);

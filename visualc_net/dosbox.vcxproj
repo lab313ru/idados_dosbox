@@ -14,6 +14,7 @@
     <SccProjectName />
     <SccLocalPath />
     <ProjectGuid>{7FCFFB9B-8629-4D51-849C-8490CECF8AB7}</ProjectGuid>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -42,7 +43,7 @@
     <_ProjectFileVersion>12.0.30501.0</_ProjectFileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>.\Debug\</OutDir>
+    <OutDir>d:\ida68\</OutDir>
     <IntDir>.\Debug\</IntDir>
     <LinkIncremental>false</LinkIncremental>
     <LibraryPath>$(DXSDK_DIR)Lib\x86\;$(LibraryPath)</LibraryPath>
@@ -58,8 +59,8 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\idados\;..\..\debugger\;..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;C_IDA_DEBUG;__NT__;__IDP__;__PLUGIN__;NO_OBSOLETE_FUNCS;_WINSOCK_DEPRECATED_NO_WARNINGS;__SINGLE_THREADED_SERVER__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\idados\;..\..\debugger\;..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;..\3rdparty\libpng\;..\3rdparty\zlib\;..\3rdparty\sdlnet\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;C_IDA_DEBUG;_DEBUG;_CONSOLE;C_IDA_DEBUG;__NT__;__IDP__;__PLUGIN__;NO_OBSOLETE_FUNCS;_WINSOCK_DEPRECATED_NO_WARNINGS;__SINGLE_THREADED_SERVER__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
@@ -76,14 +77,13 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>opengl32.lib;winmm.lib;sdlmain.lib;sdl.lib;pdcurses.lib;ws2_32.lib;dinput8.lib;dxguid.lib;ida.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>.\Debug/dosbox.exe</OutputFile>
+      <AdditionalDependencies>opengl32.lib;winmm.lib;sdlmain.lib;sdl.lib;pdcurses.lib;ws2_32.lib;dinput8.lib;dxguid.lib;zlibstat.lib;libpng.lib;Iphlpapi.lib;SDL_net.lib;ida.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>.\Debug/dosbox.pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;..\3rdparty\libpng\;..\3rdparty\zlib\;..\3rdparty\sdlnet\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
       <IgnoreSpecificDefaultLibraries>LIBCMT.lib</IgnoreSpecificDefaultLibraries>
       <AdditionalOptions>/ignore:4098 /ignore:4006 /ignore:4088 %(AdditionalOptions)</AdditionalOptions>
@@ -105,8 +105,8 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <OmitFramePointers>true</OmitFramePointers>
-      <AdditionalIncludeDirectories>..\idados\;..\..\debugger\;..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;C_IDA_DEBUG;__NT__;__IDP__;__PLUGIN__;NO_OBSOLETE_FUNCS;_WINSOCK_DEPRECATED_NO_WARNINGS;__SINGLE_THREADED_SERVER__;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\idados\;..\..\debugger\;..\..\..\include\;..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\include\;../include;../src/platform/visualc;..\3rdparty\libpng\;..\3rdparty\zlib\;..\3rdparty\sdlnet\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;C_IDA_DEBUG;NDEBUG;_CONSOLE;C_IDA_DEBUG;__NT__;__IDP__;__PLUGIN__;NO_OBSOLETE_FUNCS;_WINSOCK_DEPRECATED_NO_WARNINGS;__SINGLE_THREADED_SERVER__;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <BufferSecurityCheck>false</BufferSecurityCheck>
@@ -126,7 +126,7 @@
       <ForcedIncludeFiles>stdlib.h;malloc.h</ForcedIncludeFiles>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>opengl32.lib;winmm.lib;sdlmain.lib;sdl.lib;pdcurses.lib;ws2_32.lib;dinput8.lib;dxguid.lib;ida.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;winmm.lib;sdlmain.lib;sdl.lib;pdcurses.lib;ws2_32.lib;dinput8.lib;dxguid.lib;zlibstat.lib;libpng.lib;Iphlpapi.lib;SDL_net.lib;ida.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>.\Release/dosbox.exe</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -135,7 +135,7 @@
       <SubSystem>Console</SubSystem>
       <TargetMachine>MachineX86</TargetMachine>
       <FixedBaseAddress>false</FixedBaseAddress>
-      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\3rdparty\pdcurses\;..\3rdparty\SDL_STATIC\lib\;..\..\..\lib\x86_win_vc_32\;..\3rdparty\libpng\;..\3rdparty\zlib\;..\3rdparty\sdlnet\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
       <AdditionalOptions>/ignore:4098 /ignore:4006 /ignore:4088 /ignore:4204 %(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>

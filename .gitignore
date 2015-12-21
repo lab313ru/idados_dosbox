@@ -1,5 +1,12 @@
+/idados/Debug/
+/idados/Release/
 /visualc_net/Debug/
 /visualc_net/Release/
 *.sdf
 *.suo
 *.VC.opendb
+*.obj
+*.idb
+*.pdb
+*.tlog
+*.log
