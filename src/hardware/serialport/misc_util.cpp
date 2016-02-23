@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -64,7 +64,11 @@ TCPClientSocket::TCPClientSocket(int platformsocket) {
 	((struct _TCPsocketX*)nativetcpstruct)->sflag=0;
 	((struct _TCPsocketX*)nativetcpstruct)->channel=(SOCKET) platformsocket;
 	sockaddr_in		sa;
+#ifdef OS2
+	int			sz;
+#else
 	socklen_t		sz;
+#endif
 	sz=sizeof(sa);
 	if(getpeername(platformsocket, (sockaddr *)(&sa), &sz)==0) {
 		((struct _TCPsocketX*)nativetcpstruct)->

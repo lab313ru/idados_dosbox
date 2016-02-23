@@ -24,7 +24,6 @@ dnl perharps join this with the other target depended checks. move them upwards
 if test x$host = xi386-pc-os2-emx ; then
     CXXFLAGS="$CXXFLAGS -Zmt"
     LDFLAGS="$LDFLAGS -Zomf -Zmt"
-    LIBS="$LIBS -los2me"
 fi
 
 dnl Check for SDL
@@ -129,6 +128,12 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <math.h>]],[[
 ]])], [AC_MSG_RESULT(yes)], [AC_DEFINE([DB_HAVE_NO_POWF],[1],[libm doesn't include powf])])
 LIBS=$LIBS_BACKUP
 
+dnl Look for clock_gettime, a DB_HAVE_CLOCK_GETTIME is set when present
+AH_TEMPLATE([DB_HAVE_CLOCK_GETTIME],[Determines if the function clock_gettime is available.])
+AC_SEARCH_LIBS([clock_gettime], [rt] , [found_clock_gettime=yes], [found_clock_gettime=no])
+if test x$found_clock_gettime = xyes; then
+  AC_DEFINE(DB_HAVE_CLOCK_GETTIME)
+fi
 
 dnl Checks for libraries.
 
@@ -146,7 +151,7 @@ CFLAGS="-Werror"
 
 AH_TEMPLATE([C_ATTRIBUTE_ALWAYS_INLINE],[Determines if the compilers supports always_inline attribute.])
 AC_MSG_CHECKING(if compiler allows __attribute__((always_inline)) )
-AC_COMPILE_IFELSE([AC_LANG_SOURCE([ void __attribute__((always_inline)) test(){}
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([ inline void __attribute__((always_inline)) test(){}
 ])],[ AC_MSG_RESULT(yes);AC_DEFINE(C_ATTRIBUTE_ALWAYS_INLINE)],AC_MSG_RESULT(no))
 
 AH_TEMPLATE([C_ATTRIBUTE_FASTCALL],[Determines if the compilers supports fastcall attribute.])
@@ -387,10 +392,11 @@ else
   AC_MSG_RESULT(no)
 fi 
 
-AH_TEMPLATE(C_FPU_X86,[Define to 1 to use a x86 assembly fpu core])
+AH_TEMPLATE(C_FPU_X86,[Define to 1 to use a x86/x64 assembly fpu core])
 AC_ARG_ENABLE(fpu-x86,AC_HELP_STRING([--disable-fpu-x86],[Disable x86 assembly fpu core]),,enable_fpu_x86=yes)
-AC_MSG_CHECKING(whether x86 assembly fpu core will be enabled) 
-if test x$enable_fpu_x86 = xno ; then 
+AC_ARG_ENABLE(fpu-x64,AC_HELP_STRING([--disable-fpu-x64],[Disable x64 assembly fpu core]),,enable_fpu_x64=yes)
+AC_MSG_CHECKING(whether the x86/x64 assembly fpu core will be enabled) 
+if test x$enable_fpu_x86 = xno -o x$enable_fpu_x64 = xno; then 
    AC_MSG_RESULT(no)
 else
   if test x$enable_fpu = xyes; then

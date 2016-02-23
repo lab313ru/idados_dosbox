@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2015  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,8 +32,12 @@
 #include "setup.h"
 #include "serialport.h"
 #include <time.h>
-#include <sys/timeb.h>
 
+#if defined(DB_HAVE_CLOCK_GETTIME) && ! defined(WIN32)
+//time.h is already included
+#else
+#include <sys/timeb.h>
+#endif
 
 /* if mem_systems 0 then size_extended is reported as the real size else 
  * zero is reported. ems and xms can increase or decrease the other_memsystems
@@ -489,13 +493,23 @@ static Bitu INT11_Handler(void) {
 #endif
 
 static void BIOS_HostTimeSync() {
+	Bit32u milli = 0;
+#if defined(DB_HAVE_CLOCK_GETTIME) && ! defined(WIN32)
+	struct timespec tp;
+	clock_gettime(CLOCK_REALTIME,&tp);
+	
+	struct tm *loctime;
+	loctime = localtime(&tp.tv_sec);
+	milli = (Bit32u) (tp.tv_nsec / 1000000);
+#else
 	/* Setup time and date */
 	struct timeb timebuffer;
 	ftime(&timebuffer);
 	
 	struct tm *loctime;
 	loctime = localtime (&timebuffer.time);
-
+	milli = (Bit32u) timebuffer.millitm;
+#endif
 	/*
 	loctime->tm_hour = 23;
 	loctime->tm_min = 59;
@@ -513,7 +527,7 @@ static void BIOS_HostTimeSync() {
 		loctime->tm_hour*3600*1000+
 		loctime->tm_min*60*1000+
 		loctime->tm_sec*1000+
-		timebuffer.millitm))*(((double)PIT_TICK_RATE/65536.0)/1000.0));
+		milli))*(((double)PIT_TICK_RATE/65536.0)/1000.0));
 	mem_writed(BIOS_TIMER,ticks);
 }
 
@@ -1088,6 +1102,11 @@ public:
 		CALLBACK_Setup(call_irq2,NULL,CB_IRET_EOI_PIC1,Real2Phys(BIOS_DEFAULT_IRQ2_LOCATION),"irq 2 bios");
 		RealSetVec(0x0a,BIOS_DEFAULT_IRQ2_LOCATION);
 
+		// INT 05h: Print Screen
+		// IRQ1 handler calls it when PrtSc key is pressed; does nothing unless hooked
+		phys_writeb(Real2Phys(BIOS_DEFAULT_INT5_LOCATION),0xcf);
+		RealSetVec(0x05,BIOS_DEFAULT_INT5_LOCATION);
+
 		/* Some hardcoded vectors */
 		phys_writeb(Real2Phys(BIOS_DEFAULT_HANDLER_LOCATION),0xcf);	/* bios default interrupt vector location -> IRET */
 		phys_writew(Real2Phys(RealGetVec(0x12))+0x12,0x20); //Hack for Jurresic
@@ -1234,6 +1253,8 @@ public:
 		}
 		// PS2 mouse
 		config |= 0x04;
+		// DMA *not* supported - Ancient Art of War CGA uses this to identify PCjr
+		if (machine==MCH_PCJR) config |= 0x100;
 		// Gameport
 		config |= 0x1000;
 		mem_writew(BIOS_CONFIGURATION,config);
