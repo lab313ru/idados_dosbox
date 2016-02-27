@@ -209,7 +209,7 @@ AC_ARG_WITH(ida_sdk,AC_HELP_STRING([--with-ida-sdk=path],[Path of IDA SDK]))
 AC_ARG_WITH(ida_plugin,AC_HELP_STRING([--with-ida-plugin=path],[Path of IDA/dosbox plugin]))
 
 #Features to enable/disable
-AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses])
+AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses or IDA])
 AH_TEMPLATE(C_HEAVY_DEBUG,[Define to 1 to enable heavy debugging, also have to enable C_DEBUG])
 AH_TEMPLATE(C_IDA_DEBUG,[Define to 1 to enable remote IDA debugger])
 AH_TEMPLATE(C_IDA_64BIT,[Define to 1 to enable 64bit IDA support])
@@ -222,25 +222,25 @@ AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
 
    if test x$enable_debug = xno; then
      AC_MSG_RESULT([Debugger not enabled])
+   elif test x$enable_debug = xida -o x$enable_debug = xida32; then
+     AC_MSG_RESULT([Building remote debugger (32 bit)])
+     AC_DEFINE(C_DEBUG,1)
+     AC_DEFINE(C_IDA_DEBUG,1)
+     AC_DEFINE(C_IDA_64BIT,0)
+     AC_DEFINE(C_HEAVY_DEBUG,1)
+     ida=yes
+   elif test x$enable_debug = xida64; then
+     AC_MSG_RESULT([Building remote debugger (64 bit)])
+     AC_DEFINE(C_DEBUG,1)
+     AC_DEFINE(C_IDA_DEBUG,1)
+     AC_DEFINE(C_IDA_64BIT,1)
+     AC_DEFINE(C_HEAVY_DEBUG,1)
+     ida=yes
    elif test x$have_curses_lib = xyes -a x$have_curses_h = xyes ; then
      LIBS="$LIBS -lcurses"
      AC_DEFINE(C_DEBUG,1)
      if test x$enable_debug = xheavy ; then 
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida -o x$enable_debug = xida32; then
-       AC_MSG_RESULT([Building remote debugger (32 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,0)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
-     elif test x$enable_debug = xida64; then
-       AC_MSG_RESULT([Building remote debugger (64 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,1)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
      fi
    elif test x$have_ncurses_lib = xyes -a x$have_curses_h = xyes ; then
      LIBS="$LIBS -lncurses"
@@ -253,20 +253,6 @@ AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
      AC_DEFINE(C_DEBUG,1)
      if test x$enable_debug = xheavy ; then 
        AC_DEFINE(C_HEAVY_DEBUG,1)
-     elif test x$enable_debug = xida -o x$enable_debug = xida32; then
-       AC_MSG_RESULT([Building remote debugger (32 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,0)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
-     elif test x$enable_debug = xida64; then
-       AC_MSG_RESULT([Building remote debugger (64 bit)])
-       AC_DEFINE(C_DEBUG,1)
-       AC_DEFINE(C_IDA_DEBUG,1)
-       AC_DEFINE(C_IDA_64BIT,1)
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-       ida=yes
      fi
    else 
      AC_MSG_ERROR([Can't find curses, which is required for debug mode])
@@ -533,7 +519,7 @@ case "$host" in
        LIBS="$LIBS -lwinmm"
        if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
          CPPFLAGS="$CPPFLAGS -D__NT__"
-         LIBS="$LIBS -lwsock32"
+         LIBS="$LIBS -lwsock32 -lws2_32 -Wl,--enable-stdcall-fixup"
        fi
        AC_CHECK_HEADERS(ddraw.h)
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2 only).])

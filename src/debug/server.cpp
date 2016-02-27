@@ -5,7 +5,7 @@
 #include "server.h"
 #include "dosbox_debmod.h"
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__NT__)
 typedef int socklen_t;
 #endif
 
