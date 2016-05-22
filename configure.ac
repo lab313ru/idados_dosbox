@@ -33,7 +33,7 @@ AM_PATH_SDL($SDL_VERSION,
 	    AC_MSG_ERROR([*** SDL version $SDL_VERSION not found!])
 )
 LIBS="$LIBS $SDL_LIBS"
-CPPFLAGS="$CPPFLAGS $SDL_CFLAGS"
+CPPFLAGS="$CPPFLAGS -I/usr/local/include $SDL_CFLAGS"
 
 dnl Check if SDL is 1.2.x (1.3 not supported)
 AC_MSG_CHECKING([SDL version only being 1.2.X])
@@ -205,39 +205,84 @@ fi
 #Check for big endian machine, should #define WORDS_BIGENDIAN if so
 AC_C_BIGENDIAN
 
-#Features to enable/disable
-AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses])
-AH_TEMPLATE(C_HEAVY_DEBUG,[Define to 1 to enable heavy debugging, also have to enable C_DEBUG])
-AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
-   AC_CHECK_HEADER(curses.h,have_curses_h=yes,)
-   AC_CHECK_LIB(curses, initscr, have_curses_lib=yes, , )
-   AC_CHECK_LIB(ncurses, initscr, have_ncurses_lib=yes, , )
-   AC_CHECK_LIB(pdcurses, initscr, have_pdcurses_lib=yes, , )
+AC_ARG_WITH(ida_sdk,AC_HELP_STRING([--with-ida-sdk=path],[Path of IDA SDK]))
+AC_ARG_WITH(ida_plugin,AC_HELP_STRING([--with-ida-plugin=path],[Path of IDA/dosbox plugin]))
 
-   if test x$enable_debug = xno; then
-     AC_MSG_RESULT([Debugger not enabled])
-   elif test x$have_curses_lib = xyes -a x$have_curses_h = xyes ; then
-     LIBS="$LIBS -lcurses"
-     AC_DEFINE(C_DEBUG,1)
-     if test x$enable_debug = xheavy ; then 
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-     fi
-   elif test x$have_ncurses_lib = xyes -a x$have_curses_h = xyes ; then
-     LIBS="$LIBS -lncurses"
-     AC_DEFINE(C_DEBUG,1)
-     if test x$enable_debug = xheavy ; then 
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-     fi
-   elif test x$have_pdcurses_lib = xyes -a x$have_curses_h = xyes ; then
-     LIBS="$LIBS -lpdcurses"
-     AC_DEFINE(C_DEBUG,1)
-     if test x$enable_debug = xheavy ; then 
-       AC_DEFINE(C_HEAVY_DEBUG,1)
-     fi
-   else 
-     AC_MSG_ERROR([Can't find curses, which is required for debug mode])
-   fi
+#Features to enable/disable
+AH_TEMPLATE(C_DEBUG,[Define to 1 to enable internal debugger, requires libcurses or IDA])
+AH_TEMPLATE(C_HEAVY_DEBUG,[Define to 1 to enable heavy debugging, also have to enable C_DEBUG])
+AH_TEMPLATE(C_IDA_DEBUG,[Define to 1 to enable remote IDA debugger])
+AH_TEMPLATE(C_IDA_64BIT,[Define to 1 to enable 64bit IDA support])
+ida=no
+AC_ARG_ENABLE(debug,AC_HELP_STRING([--enable-debug],[Enable debug mode]),[
+  AC_CHECK_HEADER(curses.h,have_curses_h=yes,)
+  AC_CHECK_LIB(curses, initscr, have_curses_lib=yes, , )
+  AC_CHECK_LIB(ncurses, initscr, have_ncurses_lib=yes, , )
+  AC_CHECK_LIB(pdcurses, initscr, have_pdcurses_lib=yes, , )
+
+  if test x$enable_debug = xno; then
+    AC_MSG_RESULT([Debugger not enabled])
+  elif test x$enable_debug = xida -o x$enable_debug = xida32; then
+    AC_MSG_RESULT([Building remote debugger (32 bit)])
+    AC_DEFINE(C_DEBUG,1)
+    AC_DEFINE(C_IDA_DEBUG,1)
+    AC_DEFINE(C_IDA_64BIT,0)
+    AC_DEFINE(C_HEAVY_DEBUG,1)
+    ida=yes
+  elif test x$enable_debug = xida64; then
+    AC_MSG_RESULT([Building remote debugger (64 bit)])
+    AC_DEFINE(C_DEBUG,1)
+    AC_DEFINE(C_IDA_DEBUG,1)
+    AC_DEFINE(C_IDA_64BIT,1)
+    AC_DEFINE(C_HEAVY_DEBUG,1)
+    ida=yes
+  elif test x$have_curses_lib = xyes -a x$have_curses_h = xyes ; then
+    LIBS="$LIBS -lcurses"
+    AC_DEFINE(C_DEBUG,1)
+    if test x$enable_debug = xheavy ; then
+      AC_DEFINE(C_HEAVY_DEBUG,1)
+    fi
+  elif test x$have_ncurses_lib = xyes -a x$have_curses_h = xyes ; then
+    LIBS="$LIBS -lncurses"
+    AC_DEFINE(C_DEBUG,1)
+    if test x$enable_debug = xheavy ; then
+      AC_DEFINE(C_HEAVY_DEBUG,1)
+    fi
+  elif test x$have_pdcurses_lib = xyes -a x$have_curses_h = xyes ; then
+    LIBS="$LIBS -lpdcurses"
+    AC_DEFINE(C_DEBUG,1)
+    if test x$enable_debug = xheavy ; then
+      AC_DEFINE(C_HEAVY_DEBUG,1)
+    fi
+  else
+    AC_MSG_ERROR([Can't find curses, which is required for debug mode])
+  fi
 ],)
+
+if test x$ida = xyes; then
+  AC_CHECK_FILE($with_ida_sdk/plugins/debugger/util.cpp,,AC_MSG_ERROR([IDA SDK not found. Use --with-ida-sdk.]))
+  IDA_SDK="$with_ida_sdk"
+  AC_SUBST(IDA_SDK)
+
+  if test x$with_ida_plugin != x; then
+    ida_plugin=$with_ida_plugin
+    AC_CHECK_FILE($ida_plugin/dosbox_debmod.cpp,,AC_MSG_ERROR([IDA plugin not found. Check --with-ida-plugin.]))
+  else
+    ida_plugin_found=yes
+    AC_CHECK_FILE($with_ida_sdk/plugins/debugger/dosbox_debmod.cpp,ida_plugin=$ida_plugin/plugins/debugger,ida_plugin_found=no)
+    if test x$ida_plugin_found = xno; then
+      AC_CHECK_FILE(ida/dosbox_debmod.cpp,ida_plugin=../../ida,AC_MSG_ERROR([IDA plugin not found. Use --with-ida-plugin.]))
+    fi
+  fi
+  IDA_PLUGIN=$ida_plugin
+  AC_SUBST(IDA_PLUGIN)
+  IDA_LDADD="-L$with_ida_sdk/bin -lida"
+  AC_SUBST(IDA_LDADD)
+  AM_CONDITIONAL(DEBUG_IDA, true)
+else
+  AM_CONDITIONAL(DEBUG_IDA, false)
+fi
+
 
 AH_TEMPLATE(C_CORE_INLINE,[Define to 1 to use inlined memory functions in cpu core])
 AC_ARG_ENABLE(core-inline,AC_HELP_STRING([--enable-core-inline],[Enable inlined memory handling in CPU Core]),[
@@ -472,6 +517,10 @@ dnl Some target detection and actions for them
 case "$host" in
     *-*-cygwin* | *-*-mingw32*)
        LIBS="$LIBS -lwinmm"
+       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
+         CPPFLAGS="$CPPFLAGS -D__NT__"
+         LIBS="$LIBS -lwsock32 -lws2_32 -Wl,--enable-stdcall-fixup"
+       fi
        AC_CHECK_HEADERS(ddraw.h)
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2 only).])
        if test x$have_sdl_net_lib = xyes -a x$have_sdl_net_h = xyes ; then
@@ -486,11 +535,17 @@ case "$host" in
        AC_DEFINE(MACOSX, 1, [Compiling on Mac OS X])
        LIBS="$LIBS -framework CoreMIDI -framework AudioUnit -framework AudioToolbox"
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).])
+       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
+         CPPFLAGS="$CPPFLAGS -D__MAC__"
+       fi
        ;;
     *-*-linux*)
        AC_DEFINE(LINUX, 1, [Compiling on GNU/Linux])
        AC_DEFINE(C_DIRECTSERIAL, 1, [ Define to 1 if you want serial passthrough support (Win32, Posix and OS/2).])
-       ;;
+       if test x$enable_debug = xida -o x$enable_debug = xida32 -o  x$enable_debug = xida64; then
+         CPPFLAGS="$CPPFLAGS -D__LINUX__"
+       fi
+        ;;
     *-*-freebsd* | *-*-dragonfly* | *-*-netbsd* | *-*-openbsd*)
        dnl Disabled directserial for now. It doesn't do anything without
        dnl specifying an extra ifdef in directserial_posix.*

@@ -24,6 +24,8 @@
 #include "mem.h"
 #include "inout.h"
 #include "int10.h"
+#include "pic.h"
+#include "callback.h"
 
 static void CGA2_CopyRow(Bit8u cleft,Bit8u cright,Bit8u rold,Bit8u rnew,PhysPt base) {
 	Bit8u cheight = real_readb(BIOSMEM_SEG,BIOSMEM_CHAR_HEIGHT);
@@ -589,9 +591,21 @@ static void INT10_TeletypeOutputAttr(Bit8u chr,Bit8u attr,bool useattr,Bit8u pag
 	Bit8u cur_row=CURSOR_POS_ROW(page);
 	Bit8u cur_col=CURSOR_POS_COL(page);
 	switch (chr) {
-	case 7:
-	//TODO BEEP
-	break;
+	case 7: /* Beep */
+		// Prepare PIT counter 2 for ~900 Hz square wave
+		IO_Write(0x43,0xb6);
+		IO_Write(0x42,0x28);
+		IO_Write(0x42,0x05);
+		// Speaker on
+		IO_Write(0x61,IO_Read(0x61)|3);
+		// Idle for 1/3rd of a second
+		double start;
+		start=PIC_FullIndex();
+		while ((PIC_FullIndex()-start)<333.0) CALLBACK_Idle();
+		// Speaker off
+		IO_Write(0x61,IO_Read(0x61)&~3);
+		// No change in position
+		return;
 	case 8:
 		if(cur_col>0) cur_col--;
 		break;

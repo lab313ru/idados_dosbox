@@ -108,6 +108,10 @@ void DOS_Terminate(Bit16u pspseg,bool tsr,Bit8u exitcode) {
 	dos.return_code=exitcode;
 	dos.return_mode=(tsr)?(Bit8u)RETURN_TSR:(Bit8u)RETURN_EXIT;
 	
+#ifdef C_DEBUG
+	DEBUG_AppTerminated();
+#endif
+
 	DOS_PSP curpsp(pspseg);
 	if (pspseg==curpsp.GetParent()) return;
 	/* Free Files owned by process */

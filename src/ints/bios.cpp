@@ -1102,6 +1102,11 @@ public:
 		CALLBACK_Setup(call_irq2,NULL,CB_IRET_EOI_PIC1,Real2Phys(BIOS_DEFAULT_IRQ2_LOCATION),"irq 2 bios");
 		RealSetVec(0x0a,BIOS_DEFAULT_IRQ2_LOCATION);
 
+		// INT 05h: Print Screen
+		// IRQ1 handler calls it when PrtSc key is pressed; does nothing unless hooked
+		phys_writeb(Real2Phys(BIOS_DEFAULT_INT5_LOCATION),0xcf);
+		RealSetVec(0x05,BIOS_DEFAULT_INT5_LOCATION);
+
 		/* Some hardcoded vectors */
 		phys_writeb(Real2Phys(BIOS_DEFAULT_HANDLER_LOCATION),0xcf);	/* bios default interrupt vector location -> IRET */
 		phys_writew(Real2Phys(RealGetVec(0x12))+0x12,0x20); //Hack for Jurresic
@@ -1254,10 +1259,6 @@ public:
 		config |= 0x1000;
 		mem_writew(BIOS_CONFIGURATION,config);
 		CMOS_SetRegister(0x14,(Bit8u)(config&0xff)); //Should be updated on changes
-		/* Setup PC speaker initial state - real BIOS does this for POST beeps */
-		IO_Write(0x43,0xb6); // PIT 2 mode 3
-		IO_Write(0x42,0x28); // counter 1320
-		IO_Write(0x42,0x05);
 		/* Setup extended memory size */
 		IO_Write(0x70,0x30);
 		size_extended=IO_Read(0x71);

@@ -5,7 +5,7 @@
 #include "server.h"
 #include "dosbox_debmod.h"
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__NT__)
 typedef int socklen_t;
 #endif
 
@@ -340,7 +340,7 @@ int idados_init()
   if ( listen(listen_socket, SOMAXCONN) == SOCKET_ERROR )
     neterr(irs, "listen");
 
-  hostent *local_host = gethostbyname("localhost");
+  hostent *local_host = gethostbyname("");
   if ( local_host != NULL )
   {
     const char *local_ip = inet_ntoa(*(struct in_addr *)*local_host->h_addr_list);
