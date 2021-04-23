@@ -1,6 +1,9 @@
 # idados_dosbox
 idados debugger plugin (DOSBOX+IDA)
 
+MOVED HERE: https://github.com/lab313ru/dsbxida
+This project is not supported. Use dsbxida!
+
 ## Compilation (Visual Studio 2015)
 1. Put both "**idados**" and "**dosbox**" dirs in your **IDASDK\plugins\** directory;
 2. Open **IDASDK\plugins\dosbox\visualc_net\dosbox.sln** and build it;
